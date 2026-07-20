@@ -3,25 +3,74 @@
 A cognitive-science-grounded memory layer for AI agents.
 
 Most memory libraries for LLM agents are flat vector-store wrappers with
-recency scoring bolted on. `tiered-memory` instead models memory the way
-human cognition does: information moves through **tiers** (working →
-long-term), gets **consolidated** based on salience, and **decays** over
-time unless reinforced.
+recency scoring bolted on. `tiered-memory` does two things a flat store
+doesn't:
 
-- **Tiered** — working memory and long-term memory behave differently by design
-- **Consolidation-aware** — plug in your own policy for what's worth remembering long-term
-- **Decay-aware** — memories fade on a forgetting curve instead of living forever
-- **Backend-agnostic** — ships with a zero-dependency TF-IDF in-memory backend and a ChromaDB backend; bring your own
+1. Models memory the way human cognition does: information moves through
+   **tiers** (working → long-term), gets **consolidated** based on
+   salience, and **decays** over time unless reinforced.
+2. Can store facts as a **graph of entities and relationships**, not just
+   text — which means it can answer multi-hop questions a similarity
+   search fundamentally cannot, because the answer was never phrased as a
+   single sentence in the first place.
+
+## The thing a flat vector store can't do
+
+Say you've stored these two facts, and nothing else: "User is allergic
+to peanuts." and "Peanuts contains protein." Ask a similarity search "is
+the user's allergy connected to protein?" and it has nothing to work
+with — no stored sentence mentions "user" and "protein" together.
+`GraphBackend` answers it anyway, by extracting entities and
+relationships from each fact and traversing the chain:
+
+```python
+from memory_system.backends.graph import GraphBackend
+from memory_system.events import MemoryEvent
+from memory_system.extraction.rules_based import RuleBasedEntityExtractor
+
+graph = GraphBackend(extractor=RuleBasedEntityExtractor())
+
+graph.add(MemoryEvent(content="User is allergic to peanuts."))
+graph.add(MemoryEvent(content="Peanuts contains protein."))
+
+# user -ALLERGIC_TO-> peanut -CONTAINS-> protein: two hops, not one similarity match
+related = graph.related_to("user", max_hops=2)
+print([entity.id for entity in related])
+# ['peanut', 'protein']
+
+path = graph.explain_path("user", "protein")
+print([(rel.source_id, rel.relation_type, rel.target_id) for rel in path])
+# [('user', 'ALLERGIC_TO', 'peanut'), ('peanut', 'CONTAINS', 'protein')]
+```
+
+`related_to()` finds what's reachable; `explain_path()` shows *why* — the
+actual chain of relationships, for when you need to justify a surfaced
+memory rather than just return it. See
+[examples/graph_backend.py](examples/graph_backend.py) for a version with
+an unrelated distractor fact included, to show the traversal doesn't just
+return everything.
 
 ## Install
 
 ```bash
 pip install tiered-memory
-# with ChromaDB support:
+
+# with ChromaDB (real embedding-based semantic search):
 pip install tiered-memory[chroma]
+
+# with Claude-based entity/relationship extraction for GraphBackend:
+pip install tiered-memory[llm]
 ```
 
+`GraphBackend` itself has no extra dependencies — it's the *extractor*
+you plug into it (`RuleBasedEntityExtractor` is zero-dependency;
+`LLMEntityExtractor` needs the `llm` extra) that determines what you
+need installed.
+
 ## Quickstart
+
+The core tiered-memory loop — store, consolidate, decay, retrieve —
+works the same way regardless of which backend you choose:
 
 ```python
 from memory_system import (
@@ -51,15 +100,86 @@ for r in results:
 
 - **`InMemoryBackend`** (default, zero dependencies) — real TF-IDF +
   cosine similarity, the same family of technique classic search
-  engines used before embeddings. Includes lightweight stemming, so
-  "peanuts" matches "peanut" and "hiking" matches "hike". It does
-  *not* do semantic/concept matching — "peanuts" won't match "dietary
-  restrictions" the way an embedding model would. Good for small to
-  medium memory sizes, testing, and CI.
+  engines used before embeddings. Includes a lightweight suffix-stripping
+  stemmer, so regular plurals and verb endings collapse together
+  (`peanut`/`peanuts`, `walk`/`walking`, `allergy`/`allergies`). It does
+  *not* do semantic/concept matching (`"peanuts"` won't match `"dietary
+  restrictions"`), and the stemmer is genuinely minimal: it doesn't
+  connect irregular derivations (`allergic`/`allergy` stay separate
+  tokens), and words ending in a silent `e` lose it when `-es`/`-ed`/
+  `-ing` is stripped without being restored, so e.g. `hike`/`hiking` and
+  `live`/`lives` don't collapse either. See
+  [benchmark/retrieval_benchmark.py](benchmark/retrieval_benchmark.py)
+  for real numbers on where this does and doesn't matter in practice.
+  Good for small to medium memory sizes, testing, and CI.
 - **`ChromaBackend`** (`pip install tiered-memory[chroma]`) — real
   embedding-based semantic search via ChromaDB. Use this when you need
   concept-level matching or are scaling past what an in-process index
-  comfortably handles.
+  comfortably handles. Note: the non-persistent (in-memory) client
+  shares its underlying store across `ChromaBackend` instances built
+  with the same `collection_name` in one process — use distinct names
+  for isolated stores (e.g. per test, per session).
+- **`GraphBackend`** — stores entities and relationships extracted from
+  each memory instead of (or alongside) flat text, and exposes
+  graph-native queries on top of the usual store/retrieve interface:
+  - `related_to(entity_id, relation_type=None, max_hops=1)` — BFS
+    traversal, optionally filtered to one relationship type
+  - `explain_path(source_id, target_id)` — the shortest relationship
+    chain connecting two entities, or `None`
+  - `consolidation_signal(entity_id)` — a structural signal (bounded to
+    `[0, 1)`, based on how connected an entity is) that a consolidation
+    policy could use alongside or instead of salience
+  - `query(text, top_k, tier)` — the standard `MemoryBackend` interface,
+    implemented here as entity-overlap matching rather than text
+    similarity, so `GraphBackend` is swappable anywhere a backend is
+    expected
+  Requires an `EntityExtractor` (see below) to turn stored text into
+  graph structure.
+
+## Choosing an extractor
+
+`GraphBackend` needs something to turn raw memory content into entities
+and relationships. Two are included:
+
+- **`RuleBasedEntityExtractor`** (zero dependencies) — regex patterns
+  over a fixed set of phrasings (`"allergic to X"`, `"enjoys X"`,
+  `"works at X"`, `"X contains Y"`, etc.). Fast, free, deterministic, and
+  narrow: it only catches phrasing it has a pattern for, and its object
+  capture caps out at two words, so compound nouns like "peanut butter
+  cake" can lose their leading word. Good for structured, predictable
+  input.
+- **`LLMEntityExtractor`** (`pip install tiered-memory[llm]`) — calls
+  Claude to extract entities/relationships as structured JSON. Much
+  higher recall and robust to phrasing the rule-based extractor can't
+  cover, at the cost of a per-memory API call. Needs `ANTHROPIC_API_KEY`
+  set (or pass `api_key=` directly).
+
+```python
+from memory_system.extraction.llm_based import LLMEntityExtractor
+
+extractor = LLMEntityExtractor()  # reads ANTHROPIC_API_KEY from the environment
+```
+
+## Retrieval quality: InMemoryBackend vs. naive keyword matching
+
+[benchmark/retrieval_benchmark.py](benchmark/retrieval_benchmark.py) runs
+26 synthetic facts and 24 queries (ground truth judged by hand before
+running either method) through `InMemoryBackend` and a naive
+substring/exact-match baseline (lowercase + tokenize, no stemming, no
+stopword weighting — "no match" if nothing overlaps at all, rather than
+defaulting to an arbitrary result).
+
+```
+InMemoryBackend (TF-IDF + stemming): 24/24 correct top-1
+naive substring/exact-match:         22/24 correct top-1
+```
+
+Both naive misses are real, not cherry-picked: one query only has a
+plural form of the relevant word in the stored fact (naive finds zero
+overlap and gives up; stemming connects them), and one ties on the
+common words shared with an unrelated fact (naive has no way to weight
+the one rare, decisive word higher; TF-IDF's IDF weighting does). Run it
+yourself: `python benchmark/retrieval_benchmark.py`.
 
 ## Why tiers?
 
@@ -74,21 +194,37 @@ salience scoring that a flat store has no natural home for.
 
 ```
 TieredMemory
- ├── MemoryBackend        (storage: InMemoryBackend, ChromaBackend, or your own)
- ├── ConsolidationPolicy  (working -> long-term promotion rules)
- ├── DecayPolicy          (retrievability over time)
- └── SalienceScorer       (importance/surprise scoring on ingest)
+ ├── MemoryBackend          (storage + retrieval; swappable)
+ │    ├── InMemoryBackend   TF-IDF + cosine + stemming, zero dependencies
+ │    ├── ChromaBackend     real embeddings via ChromaDB
+ │    └── GraphBackend      entities + relationships, multi-hop traversal
+ │         └── EntityExtractor            (text -> entities/relationships)
+ │              ├── RuleBasedEntityExtractor   regex, zero dependencies
+ │              └── LLMEntityExtractor         Claude-based, higher recall
+ ├── ConsolidationPolicy    (working -> long-term promotion rules)
+ ├── DecayPolicy            (retrievability over time)
+ └── SalienceScorer         (importance/surprise scoring on ingest)
 ```
 
 Each piece is swappable. Bring your own backend by implementing
 `MemoryBackend`; bring your own consolidation logic by implementing
-`ConsolidationPolicy`; same for decay and salience.
+`ConsolidationPolicy`; same for decay, salience, and entity extraction
+(`EntityExtractor`).
+
+Note: `GraphBackend`'s graph-native methods (`related_to`,
+`explain_path`, `consolidation_signal`) are only reachable by calling the
+backend directly (`memory.backend.related_to(...)`) — `TieredMemory`'s
+own `store`/`retrieve` interface only knows about the generic
+`MemoryBackend` methods every backend implements.
 
 ## Status
 
 Early alpha (v0.1). Core loop (`store` → `consolidate` → `decay` →
-`retrieve`) works end-to-end with the in-memory and ChromaDB backends.
-API may still shift before v1.
+`retrieve`) works end-to-end with all three backends. `GraphBackend`'s
+full method set (`add`/`get_all`/`query`/`update_tier`/`remove`/
+`related_to`/`explain_path`/`consolidation_signal`) is implemented and
+tested, including integration tests against a real `RuleBasedEntityExtractor`
+and a real ChromaDB instance. API may still shift before v1.
 
 ## Contributing
 
