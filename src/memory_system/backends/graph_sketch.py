@@ -21,6 +21,7 @@ text" are genuinely different query shapes.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from collections import deque
 from dataclasses import dataclass, field
 from typing import Optional
 
@@ -114,8 +115,38 @@ class GraphBackend(MemoryBackend):
         with entities mentioned in the query. Real text similarity
         still belongs to InMemoryBackend/ChromaBackend -- this is
         entity-overlap matching, a different (complementary) signal.
+
+        "Mentioned in the query" means a known entity id appears as a
+        substring of the (lowercased) query text -- simple and
+        dependency-free, matching this backend's v0.1 scope. Score is
+        the size of the overlap between those entities and the ones
+        linked to each event (via source_event_id on its edges).
         """
-        ...
+        normalized_query = query.lower()
+        matched_entity_ids = {eid for eid in self._entities if eid in normalized_query}
+        if not matched_entity_ids:
+            return []
+
+        event_entity_ids: dict[str, set[str]] = {}
+        for rel in self._edges:
+            ids = event_entity_ids.setdefault(rel.source_event_id, set())
+            ids.add(rel.source_id)
+            ids.add(rel.target_id)
+
+        results: list[RetrievalResult] = []
+        for event_id, entity_ids in event_entity_ids.items():
+            event = self._events.get(event_id)
+            if event is None:
+                continue
+            if tier is not None and event.tier != tier:
+                continue
+            overlap = matched_entity_ids & entity_ids
+            if not overlap:
+                continue
+            results.append(RetrievalResult(event=event, score=float(len(overlap)), tier=event.tier))
+
+        results.sort(key=lambda r: r.score, reverse=True)
+        return results[:top_k]
 
     def update_tier(self, event_id: str, new_tier: MemoryTier) -> None:
         if event_id in self._events:
@@ -167,8 +198,45 @@ class GraphBackend(MemoryBackend):
         """Returns the chain of relationships connecting two entities,
         if any -- useful for showing *why* something was surfaced,
         not just that it was.
+
+        BFS over the adjacency index (same traversal shape as
+        related_to) so the result is the shortest chain when more than
+        one path exists. Returns [] when source and target are the
+        same known entity (trivially connected, zero hops needed), and
+        None when either entity is unknown or no path connects them.
         """
-        ...
+        if source_id not in self._entities or target_id not in self._entities:
+            return None
+        if source_id == target_id:
+            return []
+
+        visited = {source_id}
+        queue = deque([source_id])
+        incoming: dict[str, Relationship] = {}
+
+        while queue:
+            node_id = queue.popleft()
+            for rel in self._adjacency.get(node_id, []):
+                if rel.target_id in visited:
+                    continue
+                visited.add(rel.target_id)
+                incoming[rel.target_id] = rel
+                if rel.target_id == target_id:
+                    queue.clear()
+                    break
+                queue.append(rel.target_id)
+
+        if target_id not in incoming:
+            return None
+
+        path: list[Relationship] = []
+        node_id = target_id
+        while node_id != source_id:
+            rel = incoming[node_id]
+            path.append(rel)
+            node_id = rel.source_id
+        path.reverse()
+        return path
 
     def consolidation_signal(self, entity_id: str) -> float:
         """Structural signal for consolidation policies: entities with
