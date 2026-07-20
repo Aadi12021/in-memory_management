@@ -102,16 +102,19 @@ for r in results:
   cosine similarity, the same family of technique classic search
   engines used before embeddings. Includes a lightweight suffix-stripping
   stemmer, so regular plurals and verb endings collapse together
-  (`peanut`/`peanuts`, `walk`/`walking`, `allergy`/`allergies`). It does
-  *not* do semantic/concept matching (`"peanuts"` won't match `"dietary
-  restrictions"`), and the stemmer is genuinely minimal: it doesn't
-  connect irregular derivations (`allergic`/`allergy` stay separate
-  tokens), and words ending in a silent `e` lose it when `-es`/`-ed`/
-  `-ing` is stripped without being restored, so e.g. `hike`/`hiking` and
-  `live`/`lives` don't collapse either. See
+  (`peanut`/`peanuts`, `walk`/`walking`, `allergy`/`allergies`), including
+  short silent-`e` words whose `e` is dropped by `-es`/`-ed`/`-ing` and
+  restored on stemming (`hike`/`hiking`, `live`/`lives`, `like`/`likes`,
+  `love`/`loves`). It does *not* do semantic/concept matching
+  (`"peanuts"` won't match `"dietary restrictions"`), and the stemmer is
+  genuinely minimal: it doesn't connect irregular derivations
+  (`allergic`/`allergy` stay separate tokens), and it doesn't handle
+  consonant-doubling before `-ing`/`-ed` (`run`/`running`,
+  `swim`/`swimming` stay separate too). See
   [benchmark/retrieval_benchmark.py](benchmark/retrieval_benchmark.py)
-  for real numbers on where this does and doesn't matter in practice.
-  Good for small to medium memory sizes, testing, and CI.
+  and [tests/test_stemmer.py](tests/test_stemmer.py) for what's verified
+  to work and what isn't. Good for small to medium memory sizes,
+  testing, and CI.
 - **`ChromaBackend`** (`pip install tiered-memory[chroma]`) — real
   embedding-based semantic search via ChromaDB. Use this when you need
   concept-level matching or are scaling past what an in-process index

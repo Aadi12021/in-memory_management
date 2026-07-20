@@ -8,3 +8,6 @@ dist/
 build/
 .coverage
 htmlcov/
+.env
+.env.*
+!.env.example

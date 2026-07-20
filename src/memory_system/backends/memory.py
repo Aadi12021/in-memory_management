@@ -26,17 +26,45 @@ from ..events import MemoryEvent, MemoryTier, RetrievalResult
 from .base import MemoryBackend
 
 
+_VOWELS = set("aeiou")
+
+
+def _dropped_silent_e(stem: str) -> bool:
+    """True if `stem` ends in consonant-vowel-consonant (e.g. "hik",
+    "liv") -- the pattern left behind when a short silent-e word
+    (hike, live, like, love) has its final 'e' dropped before a suffix
+    like -ing/-ed/-es is stripped back off.
+    """
+    if len(stem) < 3:
+        return False
+    a, b, c = stem[-3], stem[-2], stem[-1]
+    return a not in _VOWELS and b in _VOWELS and c not in _VOWELS
+
+
 def _stem(word: str) -> str:
     """Minimal suffix-stripping stemmer (not a full Porter stemmer, but
     enough to collapse common inflections like peanut/peanuts,
     hike/hiking, allergy/allergies) so exact-token TF-IDF doesn't miss
     obvious matches due to plurals or verb endings.
+
+    After stripping "es"/"ed"/"ing", restores a dropped silent 'e' when
+    the resulting stem is consonant-vowel-consonant (hik -> hike,
+    liv -> live, lik -> like, lov -> love) -- the common case for
+    short, regular silent-e verbs. This is a targeted heuristic, not a
+    full Porter-style analysis: it won't catch every silent-e word
+    (e.g. longer words with a vowel digraph before the final consonant,
+    like believe/believes), and it doesn't address the separate
+    consonant-doubling case (run/running, swim/swimming still don't
+    collapse).
     """
     for suffix in ("ies", "es", "ing", "ed", "ly", "s"):
         if word.endswith(suffix) and len(word) - len(suffix) >= 3:
             if suffix == "ies":
                 return word[: -len(suffix)] + "y"
-            return word[: -len(suffix)]
+            stem = word[: -len(suffix)]
+            if suffix in ("es", "ed", "ing") and _dropped_silent_e(stem):
+                return stem + "e"
+            return stem
     return word
 
 
