@@ -257,10 +257,15 @@ class GraphBackend(MemoryBackend):
 # ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
-    graph = GraphBackend(extractor=None)  # e.g. LLMEntityExtractor(...)
+    from ..extraction.rules_based import RuleBasedEntityExtractor
+
+    graph = GraphBackend(extractor=RuleBasedEntityExtractor())
 
     graph.add(MemoryEvent(content="User is allergic to peanuts."))
-    graph.add(MemoryEvent(content="Mom's birthday cake has peanut butter frosting."))
+    graph.add(MemoryEvent(content="Peanuts contains protein."))
 
-    # multi-hop: this is the query a flat vector/lexical store can't do
-    risky_foods = graph.related_to("user", relation_type="ALLERGIC_TO", max_hops=2)
+    # multi-hop: this is the query a flat vector/lexical store can't do.
+    # No relation_type filter here, since the real chain crosses types:
+    # user -ALLERGIC_TO-> peanut -CONTAINS-> protein.
+    related = graph.related_to("user", max_hops=2)
+    print([entity.id for entity in related])
