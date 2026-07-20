@@ -28,8 +28,8 @@ llm = ["anthropic>=0.30.0"]
 dev = ["pytest>=7.0", "pytest-cov"]
 
 [project.urls]
-Homepage = "https://github.com/YOUR_USERNAME/tiered-memory"
-Issues = "https://github.com/YOUR_USERNAME/tiered-memory/issues"
+Homepage = "https://github.com/Aadi12021/in-memory_management"
+Issues = "https://github.com/Aadi12021/in-memory_management/issues"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/memory_system"]
