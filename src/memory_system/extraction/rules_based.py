@@ -9,7 +9,7 @@ import re
 from dataclasses import dataclass
 
 from ..events import MemoryEvent
-from ..backends.graph_sketch import Entity, EntityExtractor, Relationship
+from ..backends.graph import Entity, EntityExtractor, Relationship
 
 
 def _normalize(text: str) -> str:

@@ -1,4 +1,4 @@
-from memory_system.backends.graph_sketch import Entity, EntityExtractor, GraphBackend, Relationship
+from memory_system.backends.graph import Entity, EntityExtractor, GraphBackend, Relationship
 from memory_system.events import MemoryEvent, MemoryTier
 
 

@@ -18,7 +18,7 @@ import json
 from typing import Optional
 
 from ..events import MemoryEvent
-from ..backends.graph_sketch import Entity, EntityExtractor, Relationship
+from ..backends.graph import Entity, EntityExtractor, Relationship
 
 try:
     import anthropic

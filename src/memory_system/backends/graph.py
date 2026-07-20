@@ -1,9 +1,5 @@
 """
-Interface sketch: GraphBackend
-
-DESIGN SKETCH -- not implementation. Goal: nail the interface before
-committing to how entity/relationship extraction actually works
-(that's the harder problem, tackled after this).
+GraphBackend: adjacency-list graph storage for MemoryEvents.
 
 Core idea: instead of (or alongside) storing memories as flat text,
 extract entities and relationships from each MemoryEvent and store
