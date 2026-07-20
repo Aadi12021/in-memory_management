@@ -16,6 +16,19 @@ except ImportError:  # pragma: no cover
 
 
 class ChromaBackend(MemoryBackend):
+    """Note on collection_name and isolation: chromadb.Client() (the
+    non-persistent, in-memory path used when persist_path isn't given)
+    shares its underlying system across ChromaBackend instances
+    constructed with the same collection_name within a single process.
+    Two backends built with collection_name="tiered_memory" will see
+    each other's documents in the underlying Chroma collection, even
+    though each backend's own `_events` dict (and therefore get_all())
+    stays local. Callers who want isolated memory stores -- e.g.
+    separate test cases, or separate users/sessions in the same process
+    -- need distinct collection_name values. The test suite does this
+    with a uuid-suffixed name per test.
+    """
+
     def __init__(self, collection_name: str = "tiered_memory", persist_path: Optional[str] = None):
         if chromadb is None:
             raise ImportError(
