@@ -46,7 +46,7 @@ print([(rel.source_id, rel.relation_type, rel.target_id) for rel in path])
 `related_to()` finds what's reachable; `explain_path()` shows *why* — the
 actual chain of relationships, for when you need to justify a surfaced
 memory rather than just return it. See
-[examples/graph_backend.py](examples/graph_backend.py) for a version with
+[examples/graph_backend.py](https://github.com/Aadi12021/in-memory_management/blob/main/examples/graph_backend.py) for a version with
 an unrelated distractor fact included, to show the traversal doesn't just
 return everything.
 
@@ -111,8 +111,8 @@ for r in results:
   (`allergic`/`allergy` stay separate tokens), and it doesn't handle
   consonant-doubling before `-ing`/`-ed` (`run`/`running`,
   `swim`/`swimming` stay separate too). See
-  [benchmark/retrieval_benchmark.py](benchmark/retrieval_benchmark.py)
-  and [tests/test_stemmer.py](tests/test_stemmer.py) for what's verified
+  [benchmark/retrieval_benchmark.py](https://github.com/Aadi12021/in-memory_management/blob/main/benchmark/retrieval_benchmark.py)
+  and [tests/test_stemmer.py](https://github.com/Aadi12021/in-memory_management/blob/main/tests/test_stemmer.py) for what's verified
   to work and what isn't. Good for small to medium memory sizes,
   testing, and CI.
 - **`ChromaBackend`** (`pip install tiered-memory[chroma]`) — real
@@ -165,7 +165,7 @@ extractor = LLMEntityExtractor()  # reads ANTHROPIC_API_KEY from the environment
 
 ## Retrieval quality: InMemoryBackend vs. naive keyword matching
 
-[benchmark/retrieval_benchmark.py](benchmark/retrieval_benchmark.py) runs
+[benchmark/retrieval_benchmark.py](https://github.com/Aadi12021/in-memory_management/blob/main/benchmark/retrieval_benchmark.py) runs
 26 synthetic facts and 24 queries (ground truth judged by hand before
 running either method) through `InMemoryBackend` and a naive
 substring/exact-match baseline (lowercase + tokenize, no stemming, no
@@ -231,7 +231,7 @@ and a real ChromaDB instance. API may still shift before v1.
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md).
+See [CONTRIBUTING.md](https://github.com/Aadi12021/in-memory_management/blob/main/CONTRIBUTING.md).
 
 ## License
 
