@@ -60,6 +60,9 @@ pip install tiered-memory[chroma]
 
 # with Claude-based entity/relationship extraction for GraphBackend:
 pip install tiered-memory[llm]
+
+# with a real, embedding-based novelty/surprise SalienceScorer:
+pip install tiered-memory[percept]
 ```
 
 `GraphBackend` itself has no extra dependencies — it's the *extractor*
@@ -163,6 +166,32 @@ from memory_system.extraction.llm_based import LLMEntityExtractor
 extractor = LLMEntityExtractor()  # reads ANTHROPIC_API_KEY from the environment
 ```
 
+## Choosing a salience scorer
+
+`TieredMemory` calls `salience_scorer.score(event)` on every `store()` to
+decide how important/surprising an incoming memory is; consolidation
+policies like `SurpriseBasedConsolidation` act on that score.
+
+- **`ConstantSalience`** / **`LengthHeuristicSalience`** (zero
+  dependencies) — toy defaults so the system works out of the box.
+  Every event gets the same score, or a score proportional to content
+  length. Fine for testing and for exploring the rest of the pipeline;
+  not meant to reflect real importance.
+- **`PerceptSalienceScorer`** (`pip install tiered-memory[percept]`) —
+  a real novelty/surprise signal, ported from the predictive-coding
+  stage of PERCEPT-1 (a perception daemon from the Cognitive Digital
+  Twin series). Embeds the incoming content and a live "prior" summary
+  built from what's currently in the long-term tier, and scores
+  salience as the cosine distance between them (normalized to
+  `[0, 1]`) — content that's novel relative to what the system already
+  knows scores higher than repetition of established facts. Local and
+  synchronous (no LLM calls, no network access at score time), so it's
+  safe to run inline in `store()`'s hot path; it does re-fetch and
+  re-embed the whole long-term tier on every call, which is cheap for
+  `InMemoryBackend` but worth budgeting for on a large `ChromaBackend`
+  collection. See
+  [examples/percept_salience.py](https://github.com/Aadi12021/in-memory_management/blob/main/examples/percept_salience.py).
+
 ## Retrieval quality: InMemoryBackend vs. naive keyword matching
 
 [benchmark/retrieval_benchmark.py](https://github.com/Aadi12021/in-memory_management/blob/main/benchmark/retrieval_benchmark.py) runs
@@ -207,6 +236,8 @@ TieredMemory
  ├── ConsolidationPolicy    (working -> long-term promotion rules)
  ├── DecayPolicy            (retrievability over time)
  └── SalienceScorer         (importance/surprise scoring on ingest)
+      ├── ConstantSalience / LengthHeuristicSalience   toy defaults, zero dependencies
+      └── PerceptSalienceScorer                        real novelty signal, ported from PERCEPT-1
 ```
 
 Each piece is swappable. Bring your own backend by implementing
@@ -222,12 +253,14 @@ own `store`/`retrieve` interface only knows about the generic
 
 ## Status
 
-Early alpha (v0.1). Core loop (`store` → `consolidate` → `decay` →
+Early alpha (v0.2). Core loop (`store` → `consolidate` → `decay` →
 `retrieve`) works end-to-end with all three backends. `GraphBackend`'s
 full method set (`add`/`get_all`/`query`/`update_tier`/`remove`/
 `related_to`/`explain_path`/`consolidation_signal`) is implemented and
 tested, including integration tests against a real `RuleBasedEntityExtractor`
-and a real ChromaDB instance. API may still shift before v1.
+and a real ChromaDB instance. `PerceptSalienceScorer` adds a real,
+embedding-based salience signal alongside the existing toy scorers. API
+may still shift before v1.
 
 ## Contributing
 

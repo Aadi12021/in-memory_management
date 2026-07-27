@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "tiered-memory"
-version = "0.1.0"
+version = "0.2.0"
 description = "A cognitive-science-grounded tiered memory system for AI agents: consolidation, decay, and salience-based retention."
 readme = "README.md"
 license = { text = "MIT" }
