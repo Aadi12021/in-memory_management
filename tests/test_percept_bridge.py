@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from datetime import datetime, timezone
 
 from memory_system.events import MemoryEvent, MemoryTier
