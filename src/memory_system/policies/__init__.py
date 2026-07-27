@@ -5,6 +5,7 @@ from .consolidation import (
     SurpriseBasedConsolidation,
 )
 from .decay import DecayPolicy, ForgettingCurveDecay, NoDecay
+from .percept_bridge import build_semantic_profile
 from .salience import ConstantSalience, LengthHeuristicSalience, SalienceScorer
 
 __all__ = [
@@ -18,4 +19,11 @@ __all__ = [
     "SalienceScorer",
     "ConstantSalience",
     "LengthHeuristicSalience",
+    "build_semantic_profile",
 ]
+
+try:
+    from .percept_salience import PerceptSalienceScorer  # noqa: F401
+    __all__.append("PerceptSalienceScorer")
+except ImportError:
+    pass
