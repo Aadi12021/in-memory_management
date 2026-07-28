@@ -55,10 +55,16 @@ def test_query_ranks_more_relevant_document_higher():
 
 def test_query_finds_semantically_related_content_with_no_lexical_overlap():
     hybrid = make_hybrid_backend()
-    hybrid.add(MemoryEvent(content="User is allergic to peanuts."))
-    hybrid.add(MemoryEvent(content="The weather forecast for tomorrow is sunny."))
+    legume_fact = MemoryEvent(content="Severe reaction to legumes in childhood.")
+    sales_report = MemoryEvent(content="The quarterly sales report is due Friday.")
+    hybrid.add(legume_fact)
+    hybrid.add(sales_report)
+    hybrid.add(MemoryEvent(content="Traffic on the highway was heavy this morning."))
+    hybrid.add(MemoryEvent(content="A new coffee shop opened downtown."))
 
-    results = hybrid.query("food the user cannot safely eat", top_k=2)
+    results = hybrid.query("dietary restrictions from an allergy", top_k=2)
 
-    assert len(results) >= 1
-    assert any("peanut" in str(r.event.content).lower() for r in results)
+    result_ids = {r.event.id for r in results}
+    assert legume_fact.id in result_ids
+    assert sales_report.id not in result_ids
+    assert len(results) <= 2
