@@ -2,7 +2,15 @@
 
 from __future__ import annotations
 
-from memory_system.backends.hybrid import reciprocal_rank_fusion
+import pytest
+
+from memory_system.backends.base import MemoryBackend
+from memory_system.backends.hybrid import (
+    HybridBackend,
+    HybridBackendSyncError,
+    reciprocal_rank_fusion,
+)
+from memory_system.backends.memory import InMemoryBackend
 from memory_system.events import MemoryEvent, MemoryTier, RetrievalResult
 
 
@@ -76,3 +84,182 @@ def test_rrf_preserves_event_and_tier_from_source_result():
 
     assert fused[0].event is result.event
     assert fused[0].tier == MemoryTier.LONG_TERM
+
+
+class RaisingBackend(MemoryBackend):
+    """Test double: a MemoryBackend whose configured methods raise
+    instead of executing, used to force HybridBackend's mirroring
+    failure path deterministically.
+    """
+
+    def __init__(self, fail_on=frozenset()):
+        self.fail_on = fail_on
+        self.events: dict[str, MemoryEvent] = {}
+
+    def add(self, event):
+        if "add" in self.fail_on:
+            raise RuntimeError("simulated add failure")
+        self.events[event.id] = event
+
+    def get_all(self, tier=None):
+        events = list(self.events.values())
+        if tier is not None:
+            events = [e for e in events if e.tier == tier]
+        return events
+
+    def query(self, query, top_k=5, tier=None):
+        return []
+
+    def update_tier(self, event_id, new_tier):
+        if "update_tier" in self.fail_on:
+            raise RuntimeError("simulated update_tier failure")
+        if event_id in self.events:
+            self.events[event_id].tier = new_tier
+
+    def remove(self, event_id):
+        if "remove" in self.fail_on:
+            raise RuntimeError("simulated remove failure")
+        self.events.pop(event_id, None)
+
+
+def test_add_mirrors_event_to_both_backends():
+    lexical = InMemoryBackend()
+    semantic = InMemoryBackend()
+    hybrid = HybridBackend(lexical_backend=lexical, semantic_backend=semantic)
+    event = MemoryEvent(content="a shared fact")
+
+    hybrid.add(event)
+
+    assert lexical.get_all()[0].id == event.id
+    assert semantic.get_all()[0].id == event.id
+
+
+def test_add_raises_sync_error_when_semantic_backend_fails():
+    lexical = InMemoryBackend()
+    semantic = RaisingBackend(fail_on={"add"})
+    hybrid = HybridBackend(lexical_backend=lexical, semantic_backend=semantic)
+    event = MemoryEvent(content="a fact")
+
+    with pytest.raises(HybridBackendSyncError) as exc_info:
+        hybrid.add(event)
+
+    exc = exc_info.value
+    assert exc.method == "add"
+    assert exc.event_id == event.id
+    assert exc.succeeded == "lexical"
+    assert exc.failed == "semantic"
+    assert isinstance(exc.__cause__, RuntimeError)
+    # lexical already has it -- that IS the divergence being reported, not rolled back
+    assert lexical.get_all()[0].id == event.id
+
+
+def test_add_propagates_original_exception_when_lexical_backend_fails():
+    lexical = RaisingBackend(fail_on={"add"})
+    semantic = InMemoryBackend()
+    hybrid = HybridBackend(lexical_backend=lexical, semantic_backend=semantic)
+    event = MemoryEvent(content="a fact")
+
+    with pytest.raises(RuntimeError) as exc_info:
+        hybrid.add(event)
+
+    assert not isinstance(exc_info.value, HybridBackendSyncError)
+    assert semantic.get_all() == []  # never touched -- nothing diverged
+
+
+def test_update_tier_mirrors_to_both_backends():
+    lexical = InMemoryBackend()
+    semantic = InMemoryBackend()
+    hybrid = HybridBackend(lexical_backend=lexical, semantic_backend=semantic)
+    event = MemoryEvent(content="a fact", tier=MemoryTier.WORKING)
+    hybrid.add(event)
+
+    hybrid.update_tier(event.id, MemoryTier.LONG_TERM)
+
+    assert lexical.get_all()[0].tier == MemoryTier.LONG_TERM
+    assert semantic.get_all()[0].tier == MemoryTier.LONG_TERM
+
+
+def test_update_tier_raises_sync_error_when_semantic_backend_fails():
+    lexical = InMemoryBackend()
+    semantic = RaisingBackend(fail_on={"update_tier"})
+    hybrid = HybridBackend(lexical_backend=lexical, semantic_backend=semantic)
+    event = MemoryEvent(content="a fact")
+    hybrid.add(event)
+
+    with pytest.raises(HybridBackendSyncError) as exc_info:
+        hybrid.update_tier(event.id, MemoryTier.LONG_TERM)
+
+    assert exc_info.value.method == "update_tier"
+    assert exc_info.value.succeeded == "lexical"
+    assert exc_info.value.failed == "semantic"
+
+
+def test_remove_mirrors_to_both_backends():
+    lexical = InMemoryBackend()
+    semantic = InMemoryBackend()
+    hybrid = HybridBackend(lexical_backend=lexical, semantic_backend=semantic)
+    event = MemoryEvent(content="a fact")
+    hybrid.add(event)
+
+    hybrid.remove(event.id)
+
+    assert lexical.get_all() == []
+    assert semantic.get_all() == []
+
+
+def test_remove_raises_sync_error_when_semantic_backend_fails():
+    lexical = InMemoryBackend()
+    semantic = RaisingBackend(fail_on={"remove"})
+    hybrid = HybridBackend(lexical_backend=lexical, semantic_backend=semantic)
+    event = MemoryEvent(content="a fact")
+    hybrid.add(event)
+
+    with pytest.raises(HybridBackendSyncError) as exc_info:
+        hybrid.remove(event.id)
+
+    assert exc_info.value.method == "remove"
+    assert exc_info.value.succeeded == "lexical"
+    assert exc_info.value.failed == "semantic"
+
+
+def test_get_all_delegates_to_lexical_backend_only():
+    lexical = InMemoryBackend()
+    semantic = InMemoryBackend()
+    hybrid = HybridBackend(lexical_backend=lexical, semantic_backend=semantic)
+    lexical_only_event = MemoryEvent(content="only in lexical")
+    lexical.add(lexical_only_event)  # bypasses HybridBackend.add on purpose
+
+    result = hybrid.get_all()
+
+    assert [e.id for e in result] == [lexical_only_event.id]
+
+
+def test_get_all_filters_by_tier():
+    lexical = InMemoryBackend()
+    semantic = InMemoryBackend()
+    hybrid = HybridBackend(lexical_backend=lexical, semantic_backend=semantic)
+    working = MemoryEvent(content="working fact", tier=MemoryTier.WORKING)
+    long_term = MemoryEvent(content="long term fact", tier=MemoryTier.LONG_TERM)
+    hybrid.add(working)
+    hybrid.add(long_term)
+
+    result = hybrid.get_all(tier=MemoryTier.LONG_TERM)
+
+    assert [e.id for e in result] == [long_term.id]
+
+
+def test_query_fuses_results_from_two_real_backends():
+    lexical = InMemoryBackend()
+    semantic = InMemoryBackend()
+    hybrid = HybridBackend(lexical_backend=lexical, semantic_backend=semantic)
+    allergic = MemoryEvent(content="The user is severely allergic to peanuts and tree nuts.")
+    hiking = MemoryEvent(content="The user enjoys hiking on weekends with peanut butter snacks.")
+    for event in (allergic, hiking):
+        hybrid.add(event)
+
+    results = hybrid.query("peanuts nuts allergy", top_k=2)
+
+    assert len(results) == 2
+    assert results[0].event.id == allergic.id
+    scores = [r.score for r in results]
+    assert scores == sorted(scores, reverse=True)
