@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import pytest
+from unittest.mock import patch
 
 from memory_system.backends.base import MemoryBackend
 from memory_system.backends.hybrid import (
@@ -263,3 +264,91 @@ def test_query_fuses_results_from_two_real_backends():
     assert results[0].event.id == allergic.id
     scores = [r.score for r in results]
     assert scores == sorted(scores, reverse=True)
+
+
+class StubBackend(MemoryBackend):
+    """Test double: a MemoryBackend whose query() always returns a
+    fixed, pre-set list of results regardless of the query string --
+    used to simulate "the semantic backend found something the
+    lexical backend didn't" deterministically, without needing a real
+    embedding model.
+    """
+
+    def __init__(self, results):
+        self.results = results
+        self.events: dict[str, MemoryEvent] = {r.event.id: r.event for r in results}
+
+    def add(self, event):
+        self.events[event.id] = event
+
+    def get_all(self, tier=None):
+        events = list(self.events.values())
+        if tier is not None:
+            events = [e for e in events if e.tier == tier]
+        return events
+
+    def query(self, query, top_k=5, tier=None):
+        return self.results[:top_k]
+
+    def update_tier(self, event_id, new_tier):
+        if event_id in self.events:
+            self.events[event_id].tier = new_tier
+
+    def remove(self, event_id):
+        self.events.pop(event_id, None)
+
+
+def test_query_requests_fetch_k_not_top_k_from_each_backend():
+    lexical = InMemoryBackend()
+    semantic = InMemoryBackend()
+    hybrid = HybridBackend(lexical_backend=lexical, semantic_backend=semantic, fetch_k_multiplier=5)
+    for i in range(10):
+        hybrid.add(MemoryEvent(content=f"document number {i} about cats and kittens"))
+
+    with patch.object(lexical, "query", wraps=lexical.query) as lexical_spy, \
+         patch.object(semantic, "query", wraps=semantic.query) as semantic_spy:
+        hybrid.query("cats", top_k=2)
+
+    lexical_spy.assert_called_once_with("cats", top_k=10, tier=None)
+    semantic_spy.assert_called_once_with("cats", top_k=10, tier=None)
+
+
+def test_query_passes_tier_through_to_both_backends():
+    lexical = InMemoryBackend()
+    semantic = InMemoryBackend()
+    hybrid = HybridBackend(lexical_backend=lexical, semantic_backend=semantic)
+
+    with patch.object(lexical, "query", wraps=lexical.query) as lexical_spy, \
+         patch.object(semantic, "query", wraps=semantic.query) as semantic_spy:
+        hybrid.query("cats", top_k=3, tier=MemoryTier.LONG_TERM)
+
+    lexical_spy.assert_called_once_with("cats", top_k=15, tier=MemoryTier.LONG_TERM)
+    semantic_spy.assert_called_once_with("cats", top_k=15, tier=MemoryTier.LONG_TERM)
+
+
+def test_query_returns_document_found_by_only_one_backend():
+    lexical = InMemoryBackend()  # empty -- simulates zero lexical overlap
+    semantic_only_event = MemoryEvent(content="a fact only the semantic backend would find")
+    semantic = StubBackend(
+        results=[RetrievalResult(event=semantic_only_event, score=0.9, tier=semantic_only_event.tier)]
+    )
+    hybrid = HybridBackend(lexical_backend=lexical, semantic_backend=semantic)
+
+    results = hybrid.query("food I can't eat", top_k=5)
+
+    result_ids = {r.event.id for r in results}
+    assert semantic_only_event.id in result_ids
+
+
+def test_query_truncates_fused_results_to_top_k():
+    lexical = InMemoryBackend()
+    semantic = InMemoryBackend()
+    hybrid = HybridBackend(lexical_backend=lexical, semantic_backend=semantic)
+    for i in range(10):
+        event = MemoryEvent(content=f"document {i} about cats")
+        lexical.add(event)
+        semantic.add(event)
+
+    results = hybrid.query("cats", top_k=3)
+
+    assert len(results) == 3
