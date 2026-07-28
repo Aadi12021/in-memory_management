@@ -174,10 +174,18 @@ def test_update_tier_mirrors_to_both_backends():
     event = MemoryEvent(content="a fact", tier=MemoryTier.WORKING)
     hybrid.add(event)
 
-    hybrid.update_tier(event.id, MemoryTier.LONG_TERM)
+    # semantic and lexical share the same MemoryEvent instance (HybridBackend.add
+    # hands one object to both), so InMemoryBackend's in-place mutation would make
+    # asserting on semantic.get_all()[0].tier pass even if semantic_backend.update_tier
+    # were never called. Spy on the call itself instead -- this is what actually
+    # matters for a real backend like ChromaBackend, where update_tier() has an
+    # external side effect (syncing Chroma's own metadata) beyond the shared
+    # Python attribute.
+    with patch.object(semantic, "update_tier", wraps=semantic.update_tier) as semantic_spy:
+        hybrid.update_tier(event.id, MemoryTier.LONG_TERM)
 
     assert lexical.get_all()[0].tier == MemoryTier.LONG_TERM
-    assert semantic.get_all()[0].tier == MemoryTier.LONG_TERM
+    semantic_spy.assert_called_once_with(event.id, MemoryTier.LONG_TERM)
 
 
 def test_update_tier_raises_sync_error_when_semantic_backend_fails():

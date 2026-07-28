@@ -125,6 +125,21 @@ for r in results:
   shares its underlying store across `ChromaBackend` instances built
   with the same `collection_name` in one process — use distinct names
   for isolated stores (e.g. per test, per session).
+- **`HybridBackend`** — combines a lexical backend (e.g. `InMemoryBackend`)
+  and a semantic backend (e.g. `ChromaBackend`) into one ranked result via
+  Reciprocal Rank Fusion (RRF), rather than picking one retrieval strategy.
+  TF-IDF cosine similarity and embedding-distance similarity aren't on
+  comparable scales, so RRF combines by each backend's own rank order
+  instead of by raw score — a document either backend finds gets a
+  contribution, a document both agree on ranks higher than one either
+  alone would surface. Requires no extra of its own; whatever the two
+  backends you pass it need (e.g. `chroma` for a `ChromaBackend`) is
+  their concern, not `HybridBackend`'s. Mirrors every write to both
+  backends and raises `HybridBackendSyncError` if a write to the second
+  backend fails after the first succeeded, rather than leaving the two
+  silently out of sync. See
+  [docs/superpowers/specs/2026-07-28-hybrid-retrieval-design.md](https://github.com/Aadi12021/in-memory_management/blob/main/docs/superpowers/specs/2026-07-28-hybrid-retrieval-design.md)
+  for the full design rationale.
 - **`GraphBackend`** — stores entities and relationships extracted from
   each memory instead of (or alongside) flat text, and exposes
   graph-native queries on top of the usual store/retrieve interface:
@@ -229,6 +244,7 @@ TieredMemory
  ├── MemoryBackend          (storage + retrieval; swappable)
  │    ├── InMemoryBackend   TF-IDF + cosine + stemming, zero dependencies
  │    ├── ChromaBackend     real embeddings via ChromaDB
+ │    ├── HybridBackend     InMemoryBackend + ChromaBackend fused via RRF
  │    └── GraphBackend      entities + relationships, multi-hop traversal
  │         └── EntityExtractor            (text -> entities/relationships)
  │              ├── RuleBasedEntityExtractor   regex, zero dependencies
@@ -254,11 +270,13 @@ own `store`/`retrieve` interface only knows about the generic
 ## Status
 
 Early alpha (v0.2). Core loop (`store` → `consolidate` → `decay` →
-`retrieve`) works end-to-end with all three backends. `GraphBackend`'s
+`retrieve`) works end-to-end with all four backends. `GraphBackend`'s
 full method set (`add`/`get_all`/`query`/`update_tier`/`remove`/
 `related_to`/`explain_path`/`consolidation_signal`) is implemented and
 tested, including integration tests against a real `RuleBasedEntityExtractor`
-and a real ChromaDB instance. `PerceptSalienceScorer` adds a real,
+and a real ChromaDB instance. `HybridBackend` combines `InMemoryBackend`
+and `ChromaBackend` via Reciprocal Rank Fusion, tested against real
+backend instances on both sides. `PerceptSalienceScorer` adds a real,
 embedding-based salience signal alongside the existing toy scorers. API
 may still shift before v1.
 
