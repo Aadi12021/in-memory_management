@@ -1,0 +1,445 @@
+Sampled 100 questions (seed=42, n_total=100):
+  2ebe6c90                     temporal-reasoning
+  af082822                     temporal-reasoning
+  gpt4_8279ba03                temporal-reasoning
+  gpt4_4929293b                temporal-reasoning
+  gpt4_d6585ce9                temporal-reasoning
+  8077ef71                     temporal-reasoning
+  gpt4_4edbafa2                temporal-reasoning
+  gpt4_1d80365e                temporal-reasoning
+  gpt4_6ed717ea                temporal-reasoning
+  8c18457d                     temporal-reasoning
+  gpt4_93f6379c                temporal-reasoning
+  6e984302                     temporal-reasoning
+  gpt4_e072b769                temporal-reasoning
+  gpt4_76048e76                temporal-reasoning
+  gpt4_e061b84g                temporal-reasoning
+  gpt4_fa19884c                temporal-reasoning
+  b46e15ed                     temporal-reasoning
+  gpt4_1a1dc16d                temporal-reasoning
+  gpt4_45189cb4                temporal-reasoning
+  gpt4_e061b84f                temporal-reasoning
+  gpt4_fa19884d                temporal-reasoning
+  0bb5a684                     temporal-reasoning
+  gpt4_2f56ae70                temporal-reasoning
+  gpt4_b5700ca0                temporal-reasoning
+  4dfccbf7                     temporal-reasoning
+  gpt4_65aabe59                temporal-reasoning
+  gpt4_5dcc0aab                temporal-reasoning
+  73d42213                     multi-session
+  88432d0a_abs                 multi-session
+  a3332713                     multi-session
+  51c32626                     multi-session
+  6d550036                     multi-session
+  a9f6b44c                     multi-session
+  27016adc                     multi-session
+  gpt4_2f91af09                multi-session
+  gpt4_ab202e7f                multi-session
+  60bf93ed                     multi-session
+  88432d0a                     multi-session
+  2318644b                     multi-session
+  1c549ce4                     multi-session
+  e56a43b9                     multi-session
+  46a3abf7                     multi-session
+  gpt4_a56e767c                multi-session
+  e3038f8c                     multi-session
+  6cb6f249                     multi-session
+  gpt4_731e37d7                multi-session
+  bc149d6b                     multi-session
+  gpt4_e05b82a6                multi-session
+  3c1045c8                     multi-session
+  eeda8a6d                     multi-session
+  ba358f49                     multi-session
+  3a704032                     multi-session
+  0100672e                     multi-session
+  eeda8a6d_abs                 multi-session
+  26bdc477                     knowledge-update
+  0f05491a                     knowledge-update
+  50635ada                     knowledge-update
+  07741c44                     knowledge-update
+  6aeb4375_abs                 knowledge-update
+  8fb83627                     knowledge-update
+  eace081b                     knowledge-update
+  e493bb7c                     knowledge-update
+  ce6d2d27                     knowledge-update
+  d7c942c3                     knowledge-update
+  6a27ffc2                     knowledge-update
+  2698e78f_abs                 knowledge-update
+  0ddfec37_abs                 knowledge-update
+  c6853660                     knowledge-update
+  184da446                     knowledge-update
+  545bd2b5                     single-session-user
+  60d45044                     single-session-user
+  faba32e5                     single-session-user
+  19b5f2b3                     single-session-user
+  c8c3f81d                     single-session-user
+  4fd1909e                     single-session-user
+  b320f3f8                     single-session-user
+  3b6f954b                     single-session-user
+  bc8a6e93                     single-session-user
+  ad7109d1                     single-session-user
+  001be529                     single-session-user
+  ccb36322                     single-session-user
+  e01b8e2f                     single-session-user
+  1e043500                     single-session-user
+  a40e080f                     single-session-assistant
+  5809eb10                     single-session-assistant
+  0e5e2d1a                     single-session-assistant
+  e982271f                     single-session-assistant
+  ac031881                     single-session-assistant
+  488d3006                     single-session-assistant
+  1de5cff2                     single-session-assistant
+  e8a79c70                     single-session-assistant
+  8752c811                     single-session-assistant
+  8cf51dda                     single-session-assistant
+  65240037                     single-session-assistant
+  fca70973                     single-session-preference
+  95228167                     single-session-preference
+  afdc33df                     single-session-preference
+  1da05512                     single-session-preference
+  06f04340                     single-session-preference
+  a89d7624                     single-session-preference
+[1/100] InMemoryBackend  2ebe6c90                     session_hit=1 turn_recall=1.0 (0.07s)
+[1/100] ChromaBackend    2ebe6c90                     session_hit=1 turn_recall=1.0 (31.41s)
+[1/100] HybridBackend    2ebe6c90                     session_hit=1 turn_recall=1.0 (29.87s)
+[2/100] InMemoryBackend  af082822                     session_hit=1 turn_recall=1.0 (0.07s)
+[2/100] ChromaBackend    af082822                     session_hit=1 turn_recall=0.0 (28.68s)
+[2/100] HybridBackend    af082822                     session_hit=1 turn_recall=0.0 (205.79s)
+[3/100] InMemoryBackend  gpt4_8279ba03                session_hit=0 turn_recall=0.0 (0.07s)
+[3/100] ChromaBackend    gpt4_8279ba03                session_hit=0 turn_recall=0.0 (930.83s)
+[3/100] HybridBackend    gpt4_8279ba03                session_hit=0 turn_recall=0.0 (30.08s)
+[4/100] InMemoryBackend  gpt4_4929293b                session_hit=0 turn_recall=0.0 (0.07s)
+[4/100] ChromaBackend    gpt4_4929293b                session_hit=1 turn_recall=0.0 (31.58s)
+[4/100] HybridBackend    gpt4_4929293b                session_hit=1 turn_recall=0.0 (28.07s)
+[5/100] InMemoryBackend  gpt4_d6585ce9                session_hit=1 turn_recall=0.0 (0.07s)
+[5/100] ChromaBackend    gpt4_d6585ce9                session_hit=1 turn_recall=0.0 (26.39s)
+[5/100] HybridBackend    gpt4_d6585ce9                session_hit=1 turn_recall=0.0 (25.43s)
+[6/100] InMemoryBackend  8077ef71                     session_hit=1 turn_recall=1.0 (0.07s)
+[6/100] ChromaBackend    8077ef71                     session_hit=1 turn_recall=1.0 (33.19s)
+[6/100] HybridBackend    8077ef71                     session_hit=1 turn_recall=1.0 (33.02s)
+[7/100] InMemoryBackend  gpt4_4edbafa2                session_hit=1 turn_recall=1.0 (0.07s)
+[7/100] ChromaBackend    gpt4_4edbafa2                session_hit=1 turn_recall=1.0 (26.98s)
+[7/100] HybridBackend    gpt4_4edbafa2                session_hit=1 turn_recall=1.0 (26.47s)
+[8/100] InMemoryBackend  gpt4_1d80365e                session_hit=1 turn_recall=1.0 (0.07s)
+[8/100] ChromaBackend    gpt4_1d80365e                session_hit=1 turn_recall=1.0 (30.68s)
+[8/100] HybridBackend    gpt4_1d80365e                session_hit=1 turn_recall=1.0 (30.02s)
+[9/100] InMemoryBackend  gpt4_6ed717ea                session_hit=1 turn_recall=1.0 (0.07s)
+[9/100] ChromaBackend    gpt4_6ed717ea                session_hit=1 turn_recall=1.0 (28.49s)
+[9/100] HybridBackend    gpt4_6ed717ea                session_hit=1 turn_recall=1.0 (28.34s)
+[10/100] InMemoryBackend  8c18457d                     session_hit=1 turn_recall=0.6666666666666666 (0.07s)
+[10/100] ChromaBackend    8c18457d                     session_hit=1 turn_recall=0.6666666666666666 (25.34s)
+[10/100] HybridBackend    8c18457d                     session_hit=1 turn_recall=1.0 (25.41s)
+[11/100] InMemoryBackend  gpt4_93f6379c                session_hit=1 turn_recall=1.0 (0.07s)
+[11/100] ChromaBackend    gpt4_93f6379c                session_hit=1 turn_recall=1.0 (25.63s)
+[11/100] HybridBackend    gpt4_93f6379c                session_hit=1 turn_recall=1.0 (26.78s)
+[12/100] InMemoryBackend  6e984302                     session_hit=1 turn_recall=0.0 (0.07s)
+[12/100] ChromaBackend    6e984302                     session_hit=1 turn_recall=0.0 (26.44s)
+[12/100] HybridBackend    6e984302                     session_hit=1 turn_recall=0.0 (26.89s)
+[13/100] InMemoryBackend  gpt4_e072b769                session_hit=1 turn_recall=1.0 (0.07s)
+[13/100] ChromaBackend    gpt4_e072b769                session_hit=1 turn_recall=1.0 (25.61s)
+[13/100] HybridBackend    gpt4_e072b769                session_hit=1 turn_recall=1.0 (27.84s)
+[14/100] InMemoryBackend  gpt4_76048e76                session_hit=1 turn_recall=0.5 (0.07s)
+[14/100] ChromaBackend    gpt4_76048e76                session_hit=1 turn_recall=0.5 (27.93s)
+[14/100] HybridBackend    gpt4_76048e76                session_hit=1 turn_recall=0.5 (29.43s)
+[15/100] InMemoryBackend  gpt4_e061b84g                session_hit=0 turn_recall=0.0 (0.07s)
+[15/100] ChromaBackend    gpt4_e061b84g                session_hit=1 turn_recall=0.0 (32.75s)
+[15/100] HybridBackend    gpt4_e061b84g                session_hit=0 turn_recall=0.0 (33.83s)
+[16/100] InMemoryBackend  gpt4_fa19884c                session_hit=1 turn_recall=1.0 (0.07s)
+[16/100] ChromaBackend    gpt4_fa19884c                session_hit=1 turn_recall=1.0 (29.78s)
+[16/100] HybridBackend    gpt4_fa19884c                session_hit=1 turn_recall=1.0 (31.78s)
+[17/100] InMemoryBackend  b46e15ed                     session_hit=1 turn_recall=0.2 (0.07s)
+[17/100] ChromaBackend    b46e15ed                     session_hit=1 turn_recall=0.0 (28.08s)
+[17/100] HybridBackend    b46e15ed                     session_hit=1 turn_recall=0.0 (29.03s)
+[18/100] InMemoryBackend  gpt4_1a1dc16d                session_hit=1 turn_recall=0.5 (0.07s)
+[18/100] ChromaBackend    gpt4_1a1dc16d                session_hit=1 turn_recall=0.5 (26.90s)
+[18/100] HybridBackend    gpt4_1a1dc16d                session_hit=1 turn_recall=1.0 (27.38s)
+[19/100] InMemoryBackend  gpt4_45189cb4                session_hit=1 turn_recall=0.0 (0.07s)
+[19/100] ChromaBackend    gpt4_45189cb4                session_hit=1 turn_recall=0.0 (29.77s)
+[19/100] HybridBackend    gpt4_45189cb4                session_hit=1 turn_recall=0.0 (30.66s)
+[20/100] InMemoryBackend  gpt4_e061b84f                session_hit=0 turn_recall=0.0 (0.06s)
+[20/100] ChromaBackend    gpt4_e061b84f                session_hit=1 turn_recall=0.0 (27.64s)
+[20/100] HybridBackend    gpt4_e061b84f                session_hit=1 turn_recall=0.3333333333333333 (28.10s)
+[21/100] InMemoryBackend  gpt4_fa19884d                session_hit=1 turn_recall=1.0 (0.07s)
+[21/100] ChromaBackend    gpt4_fa19884d                session_hit=1 turn_recall=1.0 (33.71s)
+[21/100] HybridBackend    gpt4_fa19884d                session_hit=1 turn_recall=1.0 (33.16s)
+[22/100] InMemoryBackend  0bb5a684                     session_hit=1 turn_recall=1.0 (0.07s)
+[22/100] ChromaBackend    0bb5a684                     session_hit=1 turn_recall=1.0 (26.94s)
+[22/100] HybridBackend    0bb5a684                     session_hit=1 turn_recall=1.0 (27.65s)
+[23/100] InMemoryBackend  gpt4_2f56ae70                session_hit=1 turn_recall=0.6666666666666666 (0.13s)
+[23/100] ChromaBackend    gpt4_2f56ae70                session_hit=1 turn_recall=0.6666666666666666 (27.44s)
+[23/100] HybridBackend    gpt4_2f56ae70                session_hit=1 turn_recall=0.6666666666666666 (27.13s)
+[24/100] InMemoryBackend  gpt4_b5700ca0                session_hit=1 turn_recall=0.0 (0.07s)
+[24/100] ChromaBackend    gpt4_b5700ca0                session_hit=1 turn_recall=1.0 (30.37s)
+[24/100] HybridBackend    gpt4_b5700ca0                session_hit=1 turn_recall=1.0 (29.74s)
+[25/100] InMemoryBackend  4dfccbf7                     session_hit=1 turn_recall=1.0 (0.07s)
+[25/100] ChromaBackend    4dfccbf7                     session_hit=1 turn_recall=0.5 (31.10s)
+[25/100] HybridBackend    4dfccbf7                     session_hit=1 turn_recall=1.0 (30.75s)
+[26/100] InMemoryBackend  gpt4_65aabe59                session_hit=1 turn_recall=0.6666666666666666 (0.07s)
+[26/100] ChromaBackend    gpt4_65aabe59                session_hit=1 turn_recall=0.6666666666666666 (28.10s)
+[26/100] HybridBackend    gpt4_65aabe59                session_hit=1 turn_recall=0.6666666666666666 (26.46s)
+[27/100] InMemoryBackend  gpt4_5dcc0aab                session_hit=1 turn_recall=1.0 (0.07s)
+[27/100] ChromaBackend    gpt4_5dcc0aab                session_hit=1 turn_recall=1.0 (33.88s)
+[27/100] HybridBackend    gpt4_5dcc0aab                session_hit=1 turn_recall=1.0 (32.70s)
+[28/100] InMemoryBackend  73d42213                     session_hit=1 turn_recall=1.0 (0.07s)
+[28/100] ChromaBackend    73d42213                     session_hit=1 turn_recall=0.5 (35.95s)
+[28/100] HybridBackend    73d42213                     session_hit=1 turn_recall=1.0 (31.60s)
+[29/100] InMemoryBackend  88432d0a_abs                 session_hit=1 turn_recall=None (0.07s) [ABSTENTION -- excluded from recall]
+[29/100] ChromaBackend    88432d0a_abs                 session_hit=1 turn_recall=None (30.26s) [ABSTENTION -- excluded from recall]
+[29/100] HybridBackend    88432d0a_abs                 session_hit=1 turn_recall=None (31.37s) [ABSTENTION -- excluded from recall]
+[30/100] InMemoryBackend  a3332713                     session_hit=1 turn_recall=0.5 (0.07s)
+[30/100] ChromaBackend    a3332713                     session_hit=1 turn_recall=0.5 (27.60s)
+[30/100] HybridBackend    a3332713                     session_hit=1 turn_recall=0.5 (28.76s)
+[31/100] InMemoryBackend  51c32626                     session_hit=1 turn_recall=0.5 (0.08s)
+[31/100] ChromaBackend    51c32626                     session_hit=1 turn_recall=0.0 (31.10s)
+[31/100] HybridBackend    51c32626                     session_hit=1 turn_recall=0.5 (32.10s)
+[32/100] InMemoryBackend  6d550036                     session_hit=1 turn_recall=0.25 (0.08s)
+[32/100] ChromaBackend    6d550036                     session_hit=1 turn_recall=0.0 (33.11s)
+[32/100] HybridBackend    6d550036                     session_hit=0 turn_recall=0.0 (33.48s)
+[33/100] InMemoryBackend  a9f6b44c                     session_hit=1 turn_recall=0.75 (0.09s)
+[33/100] ChromaBackend    a9f6b44c                     session_hit=1 turn_recall=0.5 (31.32s)
+[33/100] HybridBackend    a9f6b44c                     session_hit=1 turn_recall=0.75 (32.67s)
+[34/100] InMemoryBackend  27016adc                     session_hit=1 turn_recall=0.5 (0.08s)
+[34/100] ChromaBackend    27016adc                     session_hit=1 turn_recall=1.0 (32.23s)
+[34/100] HybridBackend    27016adc                     session_hit=1 turn_recall=1.0 (32.66s)
+[35/100] InMemoryBackend  gpt4_2f91af09                session_hit=1 turn_recall=0.6666666666666666 (0.09s)
+[35/100] ChromaBackend    gpt4_2f91af09                session_hit=1 turn_recall=0.6666666666666666 (33.19s)
+[35/100] HybridBackend    gpt4_2f91af09                session_hit=1 turn_recall=1.0 (35.10s)
+[36/100] InMemoryBackend  gpt4_ab202e7f                session_hit=1 turn_recall=0.6 (0.08s)
+[36/100] ChromaBackend    gpt4_ab202e7f                session_hit=1 turn_recall=0.6 (32.20s)
+[36/100] HybridBackend    gpt4_ab202e7f                session_hit=1 turn_recall=0.6 (29.87s)
+[37/100] InMemoryBackend  60bf93ed                     session_hit=1 turn_recall=1.0 (0.08s)
+[37/100] ChromaBackend    60bf93ed                     session_hit=1 turn_recall=1.0 (29.96s)
+[37/100] HybridBackend    60bf93ed                     session_hit=1 turn_recall=1.0 (28.87s)
+[38/100] InMemoryBackend  88432d0a                     session_hit=1 turn_recall=0.25 (0.08s)
+[38/100] ChromaBackend    88432d0a                     session_hit=1 turn_recall=0.0 (28.60s)
+[38/100] HybridBackend    88432d0a                     session_hit=1 turn_recall=0.25 (28.27s)
+[39/100] InMemoryBackend  2318644b                     session_hit=1 turn_recall=1.0 (0.08s)
+[39/100] ChromaBackend    2318644b                     session_hit=1 turn_recall=0.5 (30.88s)
+[39/100] HybridBackend    2318644b                     session_hit=1 turn_recall=1.0 (31.13s)
+[40/100] InMemoryBackend  1c549ce4                     session_hit=1 turn_recall=1.0 (0.08s)
+[40/100] ChromaBackend    1c549ce4                     session_hit=1 turn_recall=1.0 (27.77s)
+[40/100] HybridBackend    1c549ce4                     session_hit=1 turn_recall=1.0 (27.82s)
+[41/100] InMemoryBackend  e56a43b9                     session_hit=1 turn_recall=1.0 (0.08s)
+[41/100] ChromaBackend    e56a43b9                     session_hit=1 turn_recall=0.5 (26.26s)
+[41/100] HybridBackend    e56a43b9                     session_hit=1 turn_recall=0.5 (27.11s)
+[42/100] InMemoryBackend  46a3abf7                     session_hit=1 turn_recall=1.0 (0.08s)
+[42/100] ChromaBackend    46a3abf7                     session_hit=1 turn_recall=0.3333333333333333 (29.95s)
+[42/100] HybridBackend    46a3abf7                     session_hit=1 turn_recall=1.0 (29.99s)
+[43/100] InMemoryBackend  gpt4_a56e767c                session_hit=1 turn_recall=0.16666666666666666 (0.08s)
+[43/100] ChromaBackend    gpt4_a56e767c                session_hit=1 turn_recall=0.16666666666666666 (27.87s)
+[43/100] HybridBackend    gpt4_a56e767c                session_hit=1 turn_recall=0.5 (29.74s)
+[44/100] InMemoryBackend  e3038f8c                     session_hit=1 turn_recall=0.25 (0.08s)
+[44/100] ChromaBackend    e3038f8c                     session_hit=1 turn_recall=0.25 (27.19s)
+[44/100] HybridBackend    e3038f8c                     session_hit=1 turn_recall=0.25 (27.64s)
+[45/100] InMemoryBackend  6cb6f249                     session_hit=1 turn_recall=1.0 (0.07s)
+[45/100] ChromaBackend    6cb6f249                     session_hit=1 turn_recall=0.5 (27.39s)
+[45/100] HybridBackend    6cb6f249                     session_hit=1 turn_recall=0.5 (28.52s)
+[46/100] InMemoryBackend  gpt4_731e37d7                session_hit=1 turn_recall=0.25 (0.08s)
+[46/100] ChromaBackend    gpt4_731e37d7                session_hit=1 turn_recall=0.0 (30.63s)
+[46/100] HybridBackend    gpt4_731e37d7                session_hit=1 turn_recall=0.0 (31.95s)
+[47/100] InMemoryBackend  bc149d6b                     session_hit=1 turn_recall=0.5 (0.07s)
+[47/100] ChromaBackend    bc149d6b                     session_hit=1 turn_recall=0.5 (27.44s)
+[47/100] HybridBackend    bc149d6b                     session_hit=1 turn_recall=0.5 (28.01s)
+[48/100] InMemoryBackend  gpt4_e05b82a6                session_hit=1 turn_recall=0.75 (0.07s)
+[48/100] ChromaBackend    gpt4_e05b82a6                session_hit=1 turn_recall=1.0 (28.86s)
+[48/100] HybridBackend    gpt4_e05b82a6                session_hit=1 turn_recall=1.0 (29.31s)
+[49/100] InMemoryBackend  3c1045c8                     session_hit=1 turn_recall=1.0 (0.07s)
+[49/100] ChromaBackend    3c1045c8                     session_hit=1 turn_recall=1.0 (31.34s)
+[49/100] HybridBackend    3c1045c8                     session_hit=1 turn_recall=1.0 (31.81s)
+[50/100] InMemoryBackend  eeda8a6d                     session_hit=1 turn_recall=0.5 (0.13s)
+[50/100] ChromaBackend    eeda8a6d                     session_hit=1 turn_recall=1.0 (29.48s)
+[50/100] HybridBackend    eeda8a6d                     session_hit=1 turn_recall=0.5 (31.39s)
+[51/100] InMemoryBackend  ba358f49                     session_hit=1 turn_recall=0.5 (0.08s)
+[51/100] ChromaBackend    ba358f49                     session_hit=1 turn_recall=0.5 (23.68s)
+[51/100] HybridBackend    ba358f49                     session_hit=1 turn_recall=0.5 (23.58s)
+[52/100] InMemoryBackend  3a704032                     session_hit=1 turn_recall=0.5 (0.08s)
+[52/100] ChromaBackend    3a704032                     session_hit=1 turn_recall=0.0 (28.08s)
+[52/100] HybridBackend    3a704032                     session_hit=1 turn_recall=1.0 (27.71s)
+[53/100] InMemoryBackend  0100672e                     session_hit=1 turn_recall=1.0 (0.08s)
+[53/100] ChromaBackend    0100672e                     session_hit=1 turn_recall=1.0 (29.01s)
+[53/100] HybridBackend    0100672e                     session_hit=1 turn_recall=1.0 (28.56s)
+[54/100] InMemoryBackend  eeda8a6d_abs                 session_hit=1 turn_recall=None (0.07s) [ABSTENTION -- excluded from recall]
+[54/100] ChromaBackend    eeda8a6d_abs                 session_hit=1 turn_recall=None (28.41s) [ABSTENTION -- excluded from recall]
+[54/100] HybridBackend    eeda8a6d_abs                 session_hit=1 turn_recall=None (27.47s) [ABSTENTION -- excluded from recall]
+[55/100] InMemoryBackend  26bdc477                     session_hit=1 turn_recall=1.0 (0.08s)
+[55/100] ChromaBackend    26bdc477                     session_hit=1 turn_recall=1.0 (29.34s)
+[55/100] HybridBackend    26bdc477                     session_hit=1 turn_recall=1.0 (28.98s)
+[56/100] InMemoryBackend  0f05491a                     session_hit=1 turn_recall=1.0 (0.08s)
+[56/100] ChromaBackend    0f05491a                     session_hit=1 turn_recall=1.0 (28.58s)
+[56/100] HybridBackend    0f05491a                     session_hit=1 turn_recall=1.0 (28.19s)
+[57/100] InMemoryBackend  50635ada                     session_hit=1 turn_recall=1.0 (0.08s)
+[57/100] ChromaBackend    50635ada                     session_hit=1 turn_recall=1.0 (31.51s)
+[57/100] HybridBackend    50635ada                     session_hit=1 turn_recall=1.0 (30.87s)
+[58/100] InMemoryBackend  07741c44                     session_hit=1 turn_recall=1.0 (0.08s)
+[58/100] ChromaBackend    07741c44                     session_hit=1 turn_recall=0.5 (29.91s)
+[58/100] HybridBackend    07741c44                     session_hit=1 turn_recall=1.0 (31.41s)
+[59/100] InMemoryBackend  6aeb4375_abs                 session_hit=1 turn_recall=None (0.08s) [ABSTENTION -- excluded from recall]
+[59/100] ChromaBackend    6aeb4375_abs                 session_hit=1 turn_recall=None (31.35s) [ABSTENTION -- excluded from recall]
+[59/100] HybridBackend    6aeb4375_abs                 session_hit=1 turn_recall=None (30.50s) [ABSTENTION -- excluded from recall]
+[60/100] InMemoryBackend  8fb83627                     session_hit=1 turn_recall=1.0 (0.07s)
+[60/100] ChromaBackend    8fb83627                     session_hit=1 turn_recall=0.6666666666666666 (28.38s)
+[60/100] HybridBackend    8fb83627                     session_hit=1 turn_recall=1.0 (28.92s)
+[61/100] InMemoryBackend  eace081b                     session_hit=1 turn_recall=0.0 (0.08s)
+[61/100] ChromaBackend    eace081b                     session_hit=1 turn_recall=1.0 (28.68s)
+[61/100] HybridBackend    eace081b                     session_hit=1 turn_recall=1.0 (28.46s)
+[62/100] InMemoryBackend  e493bb7c                     session_hit=1 turn_recall=1.0 (0.08s)
+[62/100] ChromaBackend    e493bb7c                     session_hit=1 turn_recall=0.5 (29.84s)
+[62/100] HybridBackend    e493bb7c                     session_hit=1 turn_recall=1.0 (29.53s)
+[63/100] InMemoryBackend  ce6d2d27                     session_hit=1 turn_recall=1.0 (0.08s)
+[63/100] ChromaBackend    ce6d2d27                     session_hit=1 turn_recall=0.5 (30.41s)
+[63/100] HybridBackend    ce6d2d27                     session_hit=1 turn_recall=1.0 (30.25s)
+[64/100] InMemoryBackend  d7c942c3                     session_hit=1 turn_recall=1.0 (0.08s)
+[64/100] ChromaBackend    d7c942c3                     session_hit=1 turn_recall=1.0 (30.93s)
+[64/100] HybridBackend    d7c942c3                     session_hit=1 turn_recall=1.0 (30.82s)
+[65/100] InMemoryBackend  6a27ffc2                     session_hit=1 turn_recall=1.0 (0.08s)
+[65/100] ChromaBackend    6a27ffc2                     session_hit=1 turn_recall=1.0 (29.02s)
+[65/100] HybridBackend    6a27ffc2                     session_hit=1 turn_recall=1.0 (29.59s)
+[66/100] InMemoryBackend  2698e78f_abs                 session_hit=1 turn_recall=None (0.07s) [ABSTENTION -- excluded from recall]
+[66/100] ChromaBackend    2698e78f_abs                 session_hit=1 turn_recall=None (26.90s) [ABSTENTION -- excluded from recall]
+[66/100] HybridBackend    2698e78f_abs                 session_hit=1 turn_recall=None (26.72s) [ABSTENTION -- excluded from recall]
+[67/100] InMemoryBackend  0ddfec37_abs                 session_hit=1 turn_recall=None (0.07s) [ABSTENTION -- excluded from recall]
+[67/100] ChromaBackend    0ddfec37_abs                 session_hit=1 turn_recall=None (26.65s) [ABSTENTION -- excluded from recall]
+[67/100] HybridBackend    0ddfec37_abs                 session_hit=1 turn_recall=None (25.92s) [ABSTENTION -- excluded from recall]
+[68/100] InMemoryBackend  c6853660                     session_hit=1 turn_recall=1.0 (0.07s)
+[68/100] ChromaBackend    c6853660                     session_hit=1 turn_recall=1.0 (27.36s)
+[68/100] HybridBackend    c6853660                     session_hit=1 turn_recall=1.0 (28.00s)
+[69/100] InMemoryBackend  184da446                     session_hit=1 turn_recall=1.0 (0.07s)
+[69/100] ChromaBackend    184da446                     session_hit=0 turn_recall=0.0 (27.65s)
+[69/100] HybridBackend    184da446                     session_hit=1 turn_recall=1.0 (27.62s)
+[70/100] InMemoryBackend  545bd2b5                     session_hit=1 turn_recall=1.0 (0.07s)
+[70/100] ChromaBackend    545bd2b5                     session_hit=1 turn_recall=1.0 (26.67s)
+[70/100] HybridBackend    545bd2b5                     session_hit=1 turn_recall=1.0 (26.78s)
+[71/100] InMemoryBackend  60d45044                     session_hit=1 turn_recall=1.0 (0.08s)
+[71/100] ChromaBackend    60d45044                     session_hit=1 turn_recall=1.0 (31.58s)
+[71/100] HybridBackend    60d45044                     session_hit=1 turn_recall=1.0 (31.61s)
+[72/100] InMemoryBackend  faba32e5                     session_hit=1 turn_recall=1.0 (0.08s)
+[72/100] ChromaBackend    faba32e5                     session_hit=1 turn_recall=1.0 (27.13s)
+[72/100] HybridBackend    faba32e5                     session_hit=1 turn_recall=1.0 (27.92s)
+[73/100] InMemoryBackend  19b5f2b3                     session_hit=1 turn_recall=1.0 (0.07s)
+[73/100] ChromaBackend    19b5f2b3                     session_hit=1 turn_recall=1.0 (27.72s)
+[73/100] HybridBackend    19b5f2b3                     session_hit=1 turn_recall=1.0 (28.30s)
+[74/100] InMemoryBackend  c8c3f81d                     session_hit=1 turn_recall=1.0 (0.08s)
+[74/100] ChromaBackend    c8c3f81d                     session_hit=1 turn_recall=1.0 (27.98s)
+[74/100] HybridBackend    c8c3f81d                     session_hit=1 turn_recall=1.0 (28.74s)
+[75/100] InMemoryBackend  4fd1909e                     session_hit=1 turn_recall=1.0 (0.07s)
+[75/100] ChromaBackend    4fd1909e                     session_hit=1 turn_recall=1.0 (31.97s)
+[75/100] HybridBackend    4fd1909e                     session_hit=1 turn_recall=1.0 (32.61s)
+[76/100] InMemoryBackend  b320f3f8                     session_hit=1 turn_recall=1.0 (0.07s)
+[76/100] ChromaBackend    b320f3f8                     session_hit=1 turn_recall=1.0 (26.92s)
+[76/100] HybridBackend    b320f3f8                     session_hit=1 turn_recall=1.0 (27.04s)
+[77/100] InMemoryBackend  3b6f954b                     session_hit=1 turn_recall=1.0 (0.08s)
+[77/100] ChromaBackend    3b6f954b                     session_hit=1 turn_recall=1.0 (26.85s)
+[77/100] HybridBackend    3b6f954b                     session_hit=1 turn_recall=1.0 (28.05s)
+[78/100] InMemoryBackend  bc8a6e93                     session_hit=1 turn_recall=1.0 (0.08s)
+[78/100] ChromaBackend    bc8a6e93                     session_hit=0 turn_recall=0.0 (30.85s)
+[78/100] HybridBackend    bc8a6e93                     session_hit=1 turn_recall=1.0 (31.51s)
+[79/100] InMemoryBackend  ad7109d1                     session_hit=1 turn_recall=1.0 (0.08s)
+[79/100] ChromaBackend    ad7109d1                     session_hit=1 turn_recall=1.0 (26.66s)
+[79/100] HybridBackend    ad7109d1                     session_hit=1 turn_recall=1.0 (27.54s)
+[80/100] InMemoryBackend  001be529                     session_hit=1 turn_recall=1.0 (0.07s)
+[80/100] ChromaBackend    001be529                     session_hit=1 turn_recall=1.0 (30.26s)
+[80/100] HybridBackend    001be529                     session_hit=1 turn_recall=1.0 (29.77s)
+[81/100] InMemoryBackend  ccb36322                     session_hit=1 turn_recall=1.0 (0.07s)
+[81/100] ChromaBackend    ccb36322                     session_hit=1 turn_recall=1.0 (28.41s)
+[81/100] HybridBackend    ccb36322                     session_hit=1 turn_recall=1.0 (27.78s)
+[82/100] InMemoryBackend  e01b8e2f                     session_hit=1 turn_recall=1.0 (0.07s)
+[82/100] ChromaBackend    e01b8e2f                     session_hit=1 turn_recall=1.0 (31.49s)
+[82/100] HybridBackend    e01b8e2f                     session_hit=1 turn_recall=1.0 (30.19s)
+[83/100] InMemoryBackend  1e043500                     session_hit=1 turn_recall=1.0 (0.08s)
+[83/100] ChromaBackend    1e043500                     session_hit=1 turn_recall=1.0 (29.90s)
+[83/100] HybridBackend    1e043500                     session_hit=1 turn_recall=1.0 (29.46s)
+[84/100] InMemoryBackend  a40e080f                     session_hit=1 turn_recall=1.0 (0.08s)
+[84/100] ChromaBackend    a40e080f                     session_hit=1 turn_recall=1.0 (31.35s)
+[84/100] HybridBackend    a40e080f                     session_hit=1 turn_recall=1.0 (30.58s)
+[85/100] InMemoryBackend  5809eb10                     session_hit=1 turn_recall=1.0 (0.07s)
+[85/100] ChromaBackend    5809eb10                     session_hit=1 turn_recall=1.0 (35.75s)
+[85/100] HybridBackend    5809eb10                     session_hit=1 turn_recall=1.0 (35.90s)
+[86/100] InMemoryBackend  0e5e2d1a                     session_hit=1 turn_recall=1.0 (0.08s)
+[86/100] ChromaBackend    0e5e2d1a                     session_hit=1 turn_recall=1.0 (25.79s)
+[86/100] HybridBackend    0e5e2d1a                     session_hit=1 turn_recall=1.0 (26.49s)
+[87/100] InMemoryBackend  e982271f                     session_hit=1 turn_recall=1.0 (0.08s)
+[87/100] ChromaBackend    e982271f                     session_hit=1 turn_recall=1.0 (34.19s)
+[87/100] HybridBackend    e982271f                     session_hit=1 turn_recall=1.0 (34.78s)
+[88/100] InMemoryBackend  ac031881                     session_hit=1 turn_recall=1.0 (0.08s)
+[88/100] ChromaBackend    ac031881                     session_hit=1 turn_recall=1.0 (30.83s)
+[88/100] HybridBackend    ac031881                     session_hit=1 turn_recall=1.0 (31.16s)
+[89/100] InMemoryBackend  488d3006                     session_hit=1 turn_recall=1.0 (0.08s)
+[89/100] ChromaBackend    488d3006                     session_hit=1 turn_recall=1.0 (29.04s)
+[89/100] HybridBackend    488d3006                     session_hit=1 turn_recall=1.0 (30.69s)
+[90/100] InMemoryBackend  1de5cff2                     session_hit=1 turn_recall=1.0 (0.08s)
+[90/100] ChromaBackend    1de5cff2                     session_hit=1 turn_recall=1.0 (27.35s)
+[90/100] HybridBackend    1de5cff2                     session_hit=1 turn_recall=1.0 (27.83s)
+[91/100] InMemoryBackend  e8a79c70                     session_hit=1 turn_recall=0.0 (0.08s)
+[91/100] ChromaBackend    e8a79c70                     session_hit=1 turn_recall=1.0 (27.81s)
+[91/100] HybridBackend    e8a79c70                     session_hit=1 turn_recall=1.0 (29.00s)
+[92/100] InMemoryBackend  8752c811                     session_hit=1 turn_recall=0.0 (0.07s)
+[92/100] ChromaBackend    8752c811                     session_hit=1 turn_recall=1.0 (28.50s)
+[92/100] HybridBackend    8752c811                     session_hit=1 turn_recall=0.0 (29.05s)
+[93/100] InMemoryBackend  8cf51dda                     session_hit=1 turn_recall=1.0 (0.10s)
+[93/100] ChromaBackend    8cf51dda                     session_hit=1 turn_recall=1.0 (26.11s)
+[93/100] HybridBackend    8cf51dda                     session_hit=1 turn_recall=1.0 (26.27s)
+[94/100] InMemoryBackend  65240037                     session_hit=1 turn_recall=1.0 (0.07s)
+[94/100] ChromaBackend    65240037                     session_hit=1 turn_recall=1.0 (28.41s)
+[94/100] HybridBackend    65240037                     session_hit=1 turn_recall=1.0 (28.24s)
+[95/100] InMemoryBackend  fca70973                     session_hit=1 turn_recall=1.0 (0.08s)
+[95/100] ChromaBackend    fca70973                     session_hit=1 turn_recall=1.0 (26.27s)
+[95/100] HybridBackend    fca70973                     session_hit=1 turn_recall=1.0 (25.54s)
+[96/100] InMemoryBackend  95228167                     session_hit=0 turn_recall=0.0 (0.09s)
+[96/100] ChromaBackend    95228167                     session_hit=1 turn_recall=1.0 (29.82s)
+[96/100] HybridBackend    95228167                     session_hit=1 turn_recall=1.0 (29.51s)
+[97/100] InMemoryBackend  afdc33df                     session_hit=1 turn_recall=0.6666666666666666 (0.08s)
+[97/100] ChromaBackend    afdc33df                     session_hit=1 turn_recall=1.0 (30.19s)
+[97/100] HybridBackend    afdc33df                     session_hit=1 turn_recall=0.6666666666666666 (29.10s)
+[98/100] InMemoryBackend  1da05512                     session_hit=1 turn_recall=1.0 (0.08s)
+[98/100] ChromaBackend    1da05512                     session_hit=1 turn_recall=0.5 (27.34s)
+[98/100] HybridBackend    1da05512                     session_hit=1 turn_recall=1.0 (27.00s)
+[99/100] InMemoryBackend  06f04340                     session_hit=0 turn_recall=0.0 (0.08s)
+[99/100] ChromaBackend    06f04340                     session_hit=1 turn_recall=0.0 (29.45s)
+[99/100] HybridBackend    06f04340                     session_hit=0 turn_recall=0.0 (28.91s)
+[100/100] InMemoryBackend  a89d7624                     session_hit=1 turn_recall=1.0 (0.08s)
+[100/100] ChromaBackend    a89d7624                     session_hit=1 turn_recall=1.0 (29.32s)
+[100/100] HybridBackend    a89d7624                     session_hit=1 turn_recall=1.0 (28.38s)
+
+========================================================================
+RESULTS (top_k=10, seed=42)
+========================================================================
+
+InMemoryBackend
+  session-level recall@10: 0.9368  (n=95)
+  turn-level recall@10:    0.7400  (n=95)
+  per-category session-level recall:
+    knowledge-update             1.0000  (n=12)
+    multi-session                1.0000  (n=25)
+    single-session-assistant     1.0000  (n=11)
+    single-session-preference    0.6667  (n=6)
+    single-session-user          1.0000  (n=14)
+    temporal-reasoning           0.8519  (n=27)
+
+ChromaBackend
+  session-level recall@10: 0.9684  (n=95)
+  turn-level recall@10:    0.6967  (n=95)
+  per-category session-level recall:
+    knowledge-update             0.9167  (n=12)
+    multi-session                1.0000  (n=25)
+    single-session-assistant     1.0000  (n=11)
+    single-session-preference    1.0000  (n=6)
+    single-session-user          0.9286  (n=14)
+    temporal-reasoning           0.9630  (n=27)
+
+HybridBackend
+  session-level recall@10: 0.9579  (n=95)
+  turn-level recall@10:    0.7861  (n=95)
+  per-category session-level recall:
+    knowledge-update             1.0000  (n=12)
+    multi-session                0.9600  (n=25)
+    single-session-assistant     1.0000  (n=11)
+    single-session-preference    0.8333  (n=6)
+    single-session-user          1.0000  (n=14)
+    temporal-reasoning           0.9259  (n=27)
+
+Abstention questions in sample (excluded from recall, n=5):
+  88432d0a_abs
+  eeda8a6d_abs
+  6aeb4375_abs
+  2698e78f_abs
+  0ddfec37_abs

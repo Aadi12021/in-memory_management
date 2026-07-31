@@ -228,6 +228,41 @@ common words shared with an unrelated fact (naive has no way to weight
 the one rare, decisive word higher; TF-IDF's IDF weighting does). Run it
 yourself: `python benchmark/retrieval_benchmark.py`.
 
+## External benchmark: LongMemEval
+
+The benchmark above is homemade -- useful for regression-testing
+`InMemoryBackend`, but we wrote both the questions and the answer key.
+[benchmark/longmemeval_benchmark.py](https://github.com/Aadi12021/in-memory_management/blob/main/benchmark/longmemeval_benchmark.py)
+runs `InMemoryBackend`, `ChromaBackend`, and `HybridBackend` against
+[LongMemEval](https://github.com/xiaowu0162/LongMemEval) (ICLR 2025), a
+real external long-term-memory benchmark with independently authored
+questions and ground truth, on a 100-question stratified subset of
+LongMemEval_S (seed 42, `top_k=10`).
+
+This measures recall@k against LongMemEval's own ground-truth labels
+(does `retrieve()` surface the evidence?), not the official LLM-judged
+QA-accuracy metric (whether a full reader+generation pipeline answers
+correctly) -- `tiered-memory` has no answer-generation step. Not
+comparable to any published LongMemEval baseline number.
+
+```
+                     session-level recall@10   turn-level recall@10
+InMemoryBackend             0.9368                    0.7400
+ChromaBackend                0.9684                    0.6967
+HybridBackend                0.9579                    0.7861
+```
+
+No single backend wins on both metrics: `ChromaBackend` alone has the
+best session-level recall, `HybridBackend` has the best turn-level
+recall. Full results, per-category breakdown, provenance (dataset hash,
+package/chromadb versions, git commit), and a dilution investigation
+into why fusion doesn't uniformly win are in
+[benchmark/results/longmemeval_s_100q_seed42_k10.md](https://github.com/Aadi12021/in-memory_management/blob/main/benchmark/results/longmemeval_s_100q_seed42_k10.md).
+Reproduce with `python benchmark/longmemeval_benchmark.py --n 100 --seed 42`
+(downloads ~277MB on first run, takes roughly 2 hours -- see the design
+spec at [docs/superpowers/specs/2026-07-28-longmemeval-benchmark.md](https://github.com/Aadi12021/in-memory_management/blob/main/docs/superpowers/specs/2026-07-28-longmemeval-benchmark.md)
+for the full methodology).
+
 ## Why tiers?
 
 Flat vector search treats every memory as equally durable. In practice,
