@@ -13,7 +13,7 @@ from memory_system.backends.graph import GraphBackend
 from memory_system.backends.hybrid import HybridBackend
 from memory_system.backends.memory import InMemoryBackend
 from memory_system.core import _find_similar_pairs, _find_graph_backend
-from memory_system.events import MemoryEvent, MemoryTier
+from memory_system.events import ConsolidationReport, MemoryEvent, MemoryTier
 from memory_system.summarization.base import MemorySummarizer
 
 
@@ -347,3 +347,79 @@ def test_compress_on_graph_backend_preserves_entities_the_summary_omits():
     assert len(report.compressed) == 1
     result = graph.related_to("user", max_hops=1)
     assert {e.id for e in result} == {"peanut", "hiking", "quinoa"}
+
+
+def test_strengthen_connections_bumps_edge_between_entities_co_associated_by_merge():
+    graph = GraphBackend(extractor=ScriptedExtractor())
+    memory = TieredMemory(backend=graph, consolidation_policy=AlwaysConsolidate(), decay_policy=NoDecay())
+
+    # a pre-existing, unrelated fact linking peanut and protein
+    unrelated = MemoryEvent(content={"entities": [], "edges": [("peanut", "protein", "CONTAINS")]})
+    graph.add(unrelated)
+    graph.find_edge("peanut", "protein").strength = 0.5
+
+    # two similar long-term events that will merge, co-associating
+    # "peanut" and "protein" with the same surviving event
+    a = MemoryEvent(content={"entities": [], "edges": [("user", "peanut", "ALLERGIC_TO")]}, tier=MemoryTier.LONG_TERM)
+    b = MemoryEvent(content={"entities": [], "edges": [("user", "protein", "ALLERGIC_TO")]}, tier=MemoryTier.LONG_TERM)
+    memory.backend.add(a)
+    memory.backend.add(b)
+    merge_report = memory.deduplicate(threshold=1.0)
+    assert len(merge_report.merged) == 1
+
+    report = memory.strengthen_connections(merge_report=merge_report)
+
+    assert graph.find_edge("peanut", "protein").strength == 0.6
+    assert {frozenset(pair) for pair in report.strengthened} == {frozenset({"peanut", "protein"})}
+
+
+def test_strengthen_connections_caps_at_one():
+    graph = GraphBackend(extractor=ScriptedExtractor())
+    memory = TieredMemory(backend=graph, consolidation_policy=AlwaysConsolidate(), decay_policy=NoDecay())
+    unrelated = MemoryEvent(content={"entities": [], "edges": [("peanut", "protein", "CONTAINS")]})
+    graph.add(unrelated)
+    graph.find_edge("peanut", "protein").strength = 0.95
+    a = MemoryEvent(content={"entities": [], "edges": [("user", "peanut", "ALLERGIC_TO")]}, tier=MemoryTier.LONG_TERM)
+    b = MemoryEvent(content={"entities": [], "edges": [("user", "protein", "ALLERGIC_TO")]}, tier=MemoryTier.LONG_TERM)
+    memory.backend.add(a)
+    memory.backend.add(b)
+    merge_report = memory.deduplicate(threshold=1.0)
+
+    memory.strengthen_connections(merge_report=merge_report)
+
+    assert graph.find_edge("peanut", "protein").strength == 1.0
+
+
+def test_strengthen_connections_dry_run_does_not_mutate_strength():
+    graph = GraphBackend(extractor=ScriptedExtractor())
+    memory = TieredMemory(backend=graph, consolidation_policy=AlwaysConsolidate(), decay_policy=NoDecay())
+    unrelated = MemoryEvent(content={"entities": [], "edges": [("peanut", "protein", "CONTAINS")]})
+    graph.add(unrelated)
+    a = MemoryEvent(content={"entities": [], "edges": [("user", "peanut", "ALLERGIC_TO")]}, tier=MemoryTier.LONG_TERM)
+    b = MemoryEvent(content={"entities": [], "edges": [("user", "protein", "ALLERGIC_TO")]}, tier=MemoryTier.LONG_TERM)
+    memory.backend.add(a)
+    memory.backend.add(b)
+    merge_report = memory.deduplicate(threshold=1.0)
+
+    memory.strengthen_connections(merge_report=merge_report, dry_run=True)
+
+    assert graph.find_edge("peanut", "protein").strength == 1.0  # default, untouched
+
+
+def test_strengthen_connections_with_no_reports_returns_empty():
+    graph = GraphBackend(extractor=ScriptedExtractor())
+    memory = TieredMemory(backend=graph, consolidation_policy=AlwaysConsolidate(), decay_policy=NoDecay())
+    graph.add(MemoryEvent(content={"entities": [], "edges": [("peanut", "protein", "CONTAINS")]}))
+
+    report = memory.strengthen_connections()
+
+    assert report.strengthened == []
+
+
+def test_strengthen_connections_on_non_graph_backend_returns_empty():
+    memory = make_long_term_memory()  # plain InMemoryBackend
+    add_long_term(memory, "User is severely allergic to peanuts.")
+
+    report = memory.strengthen_connections()
+
+    assert report.strengthened == []

@@ -240,6 +240,53 @@ class TieredMemory:
 
         return report
 
+    def strengthen_connections(
+        self,
+        merge_report: Optional[ConsolidationReport] = None,
+        compress_report: Optional[ConsolidationReport] = None,
+        dry_run: bool = False,
+    ) -> ConsolidationReport:
+        """Strengthens graph connections between entities that ended
+        up associated with the same surviving event after this pass's
+        deduplicate()/compress() calls. Pass the ConsolidationReports
+        those methods returned (from the same pass); called with no
+        reports (the default), there is nothing to strengthen and an
+        empty ConsolidationReport is returned.
+
+        Only meaningful for GraphBackend (or a HybridBackend composed
+        with one) -- returns an empty ConsolidationReport immediately
+        for any other backend, which is not an error, just "nothing
+        to strengthen here."
+        """
+        graph_backend = _find_graph_backend(self.backend)
+        if graph_backend is None:
+            return ConsolidationReport()
+
+        new_ids: list[str] = []
+        if merge_report is not None:
+            new_ids += [new_id for _a, _b, new_id in merge_report.merged if new_id is not None]
+        if compress_report is not None:
+            new_ids += [new_id for _sources, new_id in compress_report.compressed if new_id is not None]
+
+        report = ConsolidationReport()
+        for event_id in new_ids:
+            entities = sorted(graph_backend.entities_for_event(event_id))
+            for i, entity_a in enumerate(entities):
+                for entity_b in entities[i + 1:]:
+                    edge = graph_backend.find_edge(entity_a, entity_b)
+                    if edge is None:
+                        continue
+                    # Only strengthen edges that are NOT part of this consolidation event itself
+                    # (those edges' confidence/strength are already handled by the merge/compress).
+                    # Strengthen only "external" edges that happen to connect co-mentioned entities.
+                    if edge.source_event_id == event_id:
+                        continue
+                    if not dry_run:
+                        edge.strength = min(1.0, edge.strength + 0.1)
+                    report.strengthened.append((entity_a, entity_b))
+
+        return report
+
     def decay(self, now: Optional[datetime] = None) -> int:
         """Run a decay pass, removing events whose strength has fallen
         below the forget floor. Returns the number of events forgotten.

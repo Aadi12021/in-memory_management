@@ -369,3 +369,26 @@ def test_reassign_relationships_collapses_with_pre_existing_on_new_event():
     assert len(matching_rels) == 1
     assert matching_rels[0].confidence == 0.8  # max(0.6, 0.8)
     assert matching_rels[0].strength == 0.6    # max(0.4, 0.6)
+
+
+def test_entities_for_event_returns_source_and_target_ids():
+    graph, events = make_graph_from_events([
+        {"edges": [("user", "peanut", "ALLERGIC_TO")]},
+    ])
+    assert graph.entities_for_event(events[0].id) == {"user", "peanut"}
+
+
+def test_entities_for_event_returns_empty_for_unknown_event():
+    graph = make_graph(edges=[("user", "peanut", "ALLERGIC_TO")])
+    assert graph.entities_for_event("nonexistent") == set()
+
+
+def test_find_edge_returns_relationship_in_either_direction():
+    graph = make_graph(edges=[("user", "peanut", "ALLERGIC_TO")])
+    assert graph.find_edge("user", "peanut") is not None
+    assert graph.find_edge("peanut", "user") is not None
+
+
+def test_find_edge_returns_none_when_no_edge_exists():
+    graph = make_graph(edges=[("user", "peanut", "ALLERGIC_TO")], entities=["hiking"])
+    assert graph.find_edge("user", "hiking") is None

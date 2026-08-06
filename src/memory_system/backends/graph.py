@@ -215,6 +215,24 @@ class GraphBackend(MemoryBackend):
 
         return survivors
 
+    def entities_for_event(self, event_id: str) -> set[str]:
+        """Entity ids touched by relationships sourced from this
+        event, as either source or target."""
+        return {
+            eid
+            for rel in self._edges
+            if rel.source_event_id == event_id
+            for eid in (rel.source_id, rel.target_id)
+        }
+
+    def find_edge(self, entity_a: str, entity_b: str) -> Optional[Relationship]:
+        """The relationship connecting these two entities, in either
+        direction, or None if none exists."""
+        for rel in self._edges:
+            if {rel.source_id, rel.target_id} == {entity_a, entity_b}:
+                return rel
+        return None
+
     # --- graph-native methods, the actual point of this backend -------
 
     def related_to(
