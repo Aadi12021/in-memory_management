@@ -68,16 +68,20 @@ def test_dry_run_new_id_can_be_none():
 Add to `tests/test_graph_backend.py` (append at the end of the file):
 
 ```python
-def test_relationship_strength_defaults_to_one():
+def test_relationship_strength_defaults_below_the_strengthen_cap():
+    # Post-ship correction (see this task's "Correction made..." note
+    # below): must be strictly below the 1.0 cap strengthen_connections()
+    # enforces, or no real Relationship could ever be observed to
+    # strengthen.
     rel = Relationship(
         source_id="user", target_id="peanut", relation_type="ALLERGIC_TO", source_event_id="evt1"
     )
-    assert rel.strength == 1.0
+    assert rel.strength == 0.5
 ```
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `pytest tests/test_consolidation_report.py tests/test_graph_backend.py::test_relationship_strength_defaults_to_one -v`
+Run: `pytest tests/test_consolidation_report.py tests/test_graph_backend.py::test_relationship_strength_defaults_below_the_strengthen_cap -v`
 Expected: `test_consolidation_report.py` fails with `ImportError: cannot import name 'ConsolidationReport'`; the `Relationship` test fails with `TypeError: Relationship.__init__() got an unexpected keyword argument` — no, actually it will fail because `strength` doesn't exist as an attribute: `AttributeError: 'Relationship' object has no attribute 'strength'`.
 
 - [ ] **Step 3: Write the implementation**
@@ -133,11 +137,28 @@ class Relationship:
     relation_type: str         # e.g. "ALLERGIC_TO", "ENJOYS", "INGREDIENT_OF"
     source_event_id: str       # which MemoryEvent this came from
     confidence: float = 1.0    # extraction confidence, see extraction problem
-    strength: float = 1.0      # consolidation-reinforced importance -- distinct from
+    strength: float = 0.5      # consolidation-reinforced importance -- distinct from
                                 # confidence, which is about extraction certainty, not
                                 # how reinforced this connection has become over time
     metadata: dict = field(default_factory=dict)
 ```
+
+**Correction made in post-ship exploratory testing, not caught during
+task review or the final whole-branch review:** this field originally
+shipped defaulting to `1.0` (matching this task's own commit,
+`d1eb55c`) -- the same value as the `+0.1` cap
+`strengthen_connections()` (Task 7) enforces. No code path in the
+library other than `strengthen_connections()`'s own bump ever writes
+to `.strength`, so every real, extractor-produced `Relationship` was
+born already at the ceiling, making `strengthen_connections()` a
+complete no-op on genuinely extractor-populated data --
+`min(1.0, 1.0 + 0.1)` never moves. Every Task 7/8 unit test that
+observed a strength change manually set `.strength` to a below-cap
+value before calling the method, which is not something any real code
+path does on its own, so the defect passed every review gate. Fixed by
+lowering the default to `0.5` (see the spec's Mechanism 3 section for
+the full writeup and a dedicated end-to-end regression test using the
+real `RuleBasedEntityExtractor`, added to `tests/test_offline_consolidation.py`).
 
 - [ ] **Step 4: Run tests to verify they pass**
 
@@ -1496,7 +1517,7 @@ def test_strengthen_connections_dry_run_does_not_mutate_strength():
 
     memory.strengthen_connections(merge_report=merge_report, dry_run=True)
 
-    assert graph.find_edge("peanut", "protein").strength == 1.0  # default, untouched
+    assert graph.find_edge("peanut", "protein").strength == 0.5  # default, untouched
 
 
 def test_strengthen_connections_with_no_reports_returns_empty():

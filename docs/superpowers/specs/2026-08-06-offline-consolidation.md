@@ -490,9 +490,33 @@ applied consistently.
 extraction confidence; strengthening means something else
 (consolidation-reinforced importance). Reusing `confidence` would
 conflate two different concepts in one number. Adds
-`Relationship.strength: float = 1.0` to the `Relationship` dataclass
+`Relationship.strength: float = 0.5` to the `Relationship` dataclass
 in `backends/graph.py` -- backward compatible (new field, has a
 default, no existing construction site breaks).
+
+**Correction made in post-ship exploratory testing, not caught during
+design review or implementation review:** this field originally
+defaulted to `1.0`, the same value as the `+0.1` cap
+`strengthen_connections()` enforces. Since no `EntityExtractor`
+(`RuleBasedEntityExtractor`, `LLMEntityExtractor`) or any other code
+path in the library ever writes to `.strength` except
+`strengthen_connections()`'s own bump and `reassign_relationships()`'s
+`max()`-collapse (which can only ever produce `<= 1.0` too), every
+real, extractor-produced `Relationship` was born already at the
+ceiling: `min(1.0, 1.0 + 0.1)` is a mathematical no-op.
+`strengthen_connections()` was therefore a complete no-op on any
+genuinely extractor-populated graph -- every unit test that observed a
+strength change manually set `.strength = <below-cap value>` on an
+edge before calling the method, which masked the defect, since no real
+code path does that on its own. Fixed by lowering the default to
+`0.5`: a neutral midpoint, analogous to `MemoryEvent.salience`
+defaulting to `0.0` rather than an already-maxed value, leaving room
+for real reinforcement to have an observable effect (five `+0.1`
+rounds to reach the cap). This was found by an exploratory testing
+pass run against real `store()`/`consolidate()`/`offline_consolidate()`
+flows with the real `RuleBasedEntityExtractor` -- not by the automated
+test suite, which had no test exercising a real extractor's output
+without manually overriding `.strength` first.
 
 **What "strengthen" means in v1, and what's explicitly deferred.**
 "Frequently co-retrieved" as literally stated needs retrieval

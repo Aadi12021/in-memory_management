@@ -10,6 +10,7 @@ from test_graph_backend import ScriptedExtractor
 
 from memory_system import AlwaysConsolidate, NoDecay, TieredMemory
 from memory_system.backends.graph import GraphBackend
+from memory_system.extraction.rules_based import RuleBasedEntityExtractor
 from memory_system.backends.hybrid import HybridBackend
 from memory_system.backends.memory import InMemoryBackend
 from memory_system.core import _find_similar_pairs, _find_graph_backend
@@ -337,6 +338,32 @@ def test_compress_skips_group_when_summarizer_raises():
     assert remaining_ids == {a.id, b.id}  # nothing removed, group was skipped
 
 
+def test_compress_skips_group_when_summarizer_returns_a_non_string():
+    """Regression test for a real bug found in exploratory testing: a
+    MemorySummarizer that violates its own contract (summarize() -> str)
+    by returning None, a list, or any other non-str value wasn't caught
+    anywhere -- compress() stored the raw non-str value as a MemoryEvent's
+    content with no error, silently corrupting long-term memory (nothing
+    downstream raises on a non-str content, so it would only surface much
+    later as broken retrieval results). The fix treats a bad return type
+    the same as a raised exception: fail soft, log, skip the group.
+    """
+    memory = make_long_term_memory()
+    a = add_long_term(memory, "User is severely allergic to peanuts.")
+    b = add_long_term(memory, "User is severely allergic to peanuts and tree nuts.")
+
+    class WrongTypeSummarizer(MemorySummarizer):
+        def summarize(self, events):
+            return None
+
+    report = memory.compress(threshold=0.3, summarizer=WrongTypeSummarizer())
+
+    assert report.compressed == []
+    remaining_ids = {e.id for e in memory.backend.get_all(tier=MemoryTier.LONG_TERM)}
+    assert remaining_ids == {a.id, b.id}  # nothing removed, group was skipped
+    assert all(e.content is not None for e in memory.backend.get_all(tier=MemoryTier.LONG_TERM))
+
+
 def test_compress_on_graph_backend_preserves_entities_the_summary_omits():
     graph = GraphBackend(extractor=ScriptedExtractor())
     memory = TieredMemory(backend=graph, consolidation_policy=AlwaysConsolidate(), decay_policy=NoDecay())
@@ -496,9 +523,9 @@ def test_strengthen_connections_strengthens_bystander_edge_even_when_a_consolida
 
     # the bystander gets strengthened...
     assert bystander_edge.strength == 0.6
-    # ...but the consolidation's own new edge is untouched, per the
-    # skip-self-sourced-edges contract.
-    assert consolidation_edge.strength == 1.0
+    # ...but the consolidation's own new edge is untouched at its default
+    # (0.5), per the skip-self-sourced-edges contract.
+    assert consolidation_edge.strength == 0.5
     assert {frozenset(pair) for pair in report.strengthened} == {frozenset({"peanut", "protein"})}
 
 
@@ -532,7 +559,51 @@ def test_strengthen_connections_dry_run_does_not_mutate_strength():
 
     memory.strengthen_connections(merge_report=merge_report, dry_run=True)
 
-    assert graph.find_edge("peanut", "protein").strength == 1.0  # default, untouched
+    assert graph.find_edge("peanut", "protein").strength == 0.5  # default, untouched
+
+
+def test_strengthen_connections_moves_a_real_extractor_produced_edge_off_its_default():
+    """End-to-end regression test for a real bug found in exploratory
+    testing after this feature shipped: every prior strengthen_connections
+    test manually set `.strength = <below-cap value>` on an edge before
+    calling strengthen_connections(), which is something no real code path
+    in this library ever does on its own -- RuleBasedEntityExtractor and
+    LLMEntityExtractor only ever set `confidence`, never `strength`. With
+    Relationship.strength's original default of 1.0 (the same value as the
+    +0.1 cap), strengthen_connections() was a complete no-op on any
+    genuinely extractor-produced graph: `min(1.0, 1.0 + 0.1)` never moves.
+    This test uses the real RuleBasedEntityExtractor and never touches
+    `.strength` by hand, so it fails against a 1.0 default and only passes
+    because the default was corrected to 0.5.
+    """
+    graph = GraphBackend(extractor=RuleBasedEntityExtractor())
+    memory = TieredMemory(backend=graph, consolidation_policy=AlwaysConsolidate(), decay_policy=NoDecay())
+
+    # A genuine, unrelated bystander fact -- extractor-produced, default
+    # strength, never hand-set. Added directly (not via store()+consolidate())
+    # so it stays in WORKING tier permanently and is invisible to
+    # deduplicate()'s LONG_TERM-only scan -- same pattern the neighboring
+    # ScriptedExtractor-based tests use to keep the bystander edge out of
+    # the merge itself.
+    bystander = MemoryEvent(content="Peanuts contain protein.")
+    graph.add(bystander)
+
+    # Two memories that will merge, co-associating peanut/protein onto one
+    # surviving event.
+    memory.store("User is allergic to peanuts.")
+    memory.consolidate()
+    memory.store("User is allergic to protein.")
+    memory.consolidate()
+
+    bystander_edge = graph.find_edge("peanut", "protein")
+    assert bystander_edge is not None
+    assert bystander_edge.strength == 0.5  # real extractor output, never hand-set
+
+    report = memory.offline_consolidate(merge_threshold=1.0, group_threshold=0.99)
+
+    assert len(report.merged) == 1
+    assert bystander_edge.strength == 0.6
+    assert ("peanut", "protein") in report.strengthened or ("protein", "peanut") in report.strengthened
 
 
 def test_strengthen_connections_with_no_reports_returns_empty():

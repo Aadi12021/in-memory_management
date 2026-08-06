@@ -365,6 +365,27 @@ incompatible scales — there is no single number that would mean
 your backend rather than reusing one from another backend or from the
 tests.
 
+"Pick empirically" is real advice, not a shrug — but two backends have
+floors that make a naively low choice more dangerous than it looks,
+confirmed empirically during testing:
+- **`ChromaBackend`**: `1/(1+distance)` rarely drops below ~0.33–0.40
+  even for completely unrelated text with the default embedding model
+  (e.g. `"User likes pizza."` vs. `"Photosynthesis converts sunlight
+  into chemical energy in plants."` scored `0.35`). A threshold below
+  that isn't "generous," it's "matches almost everything."
+- **`HybridBackend`**: RRF-fused scores encode rank position, not
+  similarity magnitude, so the gap between "genuine near-duplicate"
+  and "totally unrelated" can be as narrow as `0.0005` (e.g. `0.03279`
+  vs. `0.03175` in a 3-item corpus) and shrinks further as the corpus
+  grows. There may be no threshold that reliably separates true
+  duplicates from coincidental overlap once the tier is large.
+
+Before running a real (non-`dry_run`) pass on `ChromaBackend` or
+`HybridBackend`, print the pairwise score distribution for a
+representative sample of your actual long-term tier and look for a
+real gap, rather than picking a round number and trusting it to
+generalize.
+
 **This is the library's first destructive operation.** Every other
 method in `tiered-memory` only adds or reads; `deduplicate()` and
 `compress()` remove the source events once merged (`strengthen_connections()`

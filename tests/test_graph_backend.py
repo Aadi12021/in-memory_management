@@ -255,11 +255,15 @@ def test_explain_path_returns_none_for_unknown_entities():
     assert graph.explain_path("nonexistent", "peanut") is None
 
 
-def test_relationship_strength_defaults_to_one():
+def test_relationship_strength_defaults_below_the_strengthen_cap():
+    # Must be strictly below the 1.0 cap strengthen_connections() enforces,
+    # or no real (non-test-rigged) Relationship could ever be observed to
+    # strengthen -- see the post-ship correction in
+    # docs/superpowers/specs/2026-08-06-offline-consolidation.md.
     rel = Relationship(
         source_id="user", target_id="peanut", relation_type="ALLERGIC_TO", source_event_id="evt1"
     )
-    assert rel.strength == 1.0
+    assert rel.strength == 0.5
 
 
 # --- reassign_relationships ---------------------------------------------------
