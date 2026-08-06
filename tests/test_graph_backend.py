@@ -248,3 +248,10 @@ def test_explain_path_returns_none_for_unknown_entities():
     graph = make_graph(edges=[("user", "peanut", "ALLERGIC_TO")])
     assert graph.explain_path("user", "nonexistent") is None
     assert graph.explain_path("nonexistent", "peanut") is None
+
+
+def test_relationship_strength_defaults_to_one():
+    rel = Relationship(
+        source_id="user", target_id="peanut", relation_type="ALLERGIC_TO", source_event_id="evt1"
+    )
+    assert rel.strength == 1.0

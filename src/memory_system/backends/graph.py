@@ -48,6 +48,9 @@ class Relationship:
     relation_type: str         # e.g. "ALLERGIC_TO", "ENJOYS", "INGREDIENT_OF"
     source_event_id: str       # which MemoryEvent this came from
     confidence: float = 1.0    # extraction confidence, see extraction problem
+    strength: float = 1.0      # consolidation-reinforced importance -- distinct from
+                                # confidence, which is about extraction certainty, not
+                                # how reinforced this connection has become over time
     metadata: dict = field(default_factory=dict)
 
 
