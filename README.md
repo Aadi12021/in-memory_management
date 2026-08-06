@@ -328,9 +328,9 @@ online `store()`/`consolidate()`/`decay()` loop:
   events can end up in one group even if the first and last were never
   compared directly), and replaces each group of 2+ with a single
   event whose content is `summarizer.summarize(group_events)`. Needs a
-  `MemorySummarizer` (`RuleBasedEntityExtractor`'s summarization
-  counterpart is `LLMSummarizer`, `memory_system.summarization.llm_based`
-  — calls Claude; needs `ANTHROPIC_API_KEY`). If the summarizer raises
+  `MemorySummarizer` (the only implementation is `LLMSummarizer`,
+  `memory_system.summarization.llm_based` — mirrors `LLMEntityExtractor`,
+  calls Claude, needs `ANTHROPIC_API_KEY`). If the summarizer raises
   for a group, that group is skipped (logged via `logging.warning`, not
   raised) — a broken or rate-limited LLM call shouldn't abort the whole
   pass.

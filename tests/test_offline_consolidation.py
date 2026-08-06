@@ -742,7 +742,8 @@ def test_offline_consolidate_end_to_end_on_hybrid_backend_reaches_through_to_gra
     results via Reciprocal Rank Fusion, so `threshold` is on a very
     different scale (~0.03, not ~1.0 the way GraphBackend's raw
     entity-overlap score is) -- verified empirically: a and b's
-    RRF-fused score here is 1/31 + 1/32 ~= 0.0323, so 0.03 finds it.
+    RRF-fused score here is 1/(60+2) + 1/(60+2) ~= 0.0323 (rank 2 in
+    both the lexical and semantic result lists, RRF k=60), so 0.03 finds it.
     """
     lexical = InMemoryBackend()
     graph = GraphBackend(extractor=ScriptedExtractor())
