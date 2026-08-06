@@ -300,7 +300,107 @@ Note: `GraphBackend`'s graph-native methods (`related_to`,
 `explain_path`, `consolidation_signal`) are only reachable by calling the
 backend directly (`memory.backend.related_to(...)`) — `TieredMemory`'s
 own `store`/`retrieve` interface only knows about the generic
-`MemoryBackend` methods every backend implements.
+`MemoryBackend` methods every backend implements. (Offline
+consolidation, below, is a narrow exception to that: `strengthen_connections()`
+has GraphBackend-specific behavior, but it's handled internally via
+backend-type detection, so callers of `memory.strengthen_connections()`
+never need to check or know their backend type themselves.)
+
+## Offline consolidation
+
+`consolidate()` only promotes working-tier memories to long-term; it
+never touches what's already there. Over time a long-term tier
+accumulates near-duplicate facts (the same allergy stored twice in
+slightly different words) and related-but-separate facts that would be
+more useful merged into one summary. `TieredMemory` has four methods for
+running that cleanup as a periodic offline pass, separate from the
+online `store()`/`consolidate()`/`decay()` loop:
+
+- **`deduplicate(threshold, dry_run=False)`** — finds pairs of
+  long-term events whose similarity (via the backend's own `query()`)
+  is at or above `threshold`, and merges each pair into one event: the
+  higher-salience side's content survives, salience/timestamp/metadata
+  are combined, and provenance is recorded in
+  `metadata["merged_from"]`.
+- **`compress(threshold, summarizer, dry_run=False)`** — groups
+  long-term events into connected components by the same
+  similarity-above-`threshold` relation (so a chain of pairwise-similar
+  events can end up in one group even if the first and last were never
+  compared directly), and replaces each group of 2+ with a single
+  event whose content is `summarizer.summarize(group_events)`. Needs a
+  `MemorySummarizer` (`RuleBasedEntityExtractor`'s summarization
+  counterpart is `LLMSummarizer`, `memory_system.summarization.llm_based`
+  — calls Claude; needs `ANTHROPIC_API_KEY`). If the summarizer raises
+  for a group, that group is skipped (logged via `logging.warning`, not
+  raised) — a broken or rate-limited LLM call shouldn't abort the whole
+  pass.
+- **`strengthen_connections(merge_report=None, compress_report=None, dry_run=False)`** —
+  GraphBackend-only (a no-op, returning an empty report, for any other
+  backend — including a bare `InMemoryBackend`/`ChromaBackend`, or a
+  `HybridBackend` composed of neither side being a `GraphBackend`; a
+  `HybridBackend` with a `GraphBackend` on either side is detected and
+  reached through). For every event `deduplicate()`/`compress()` just
+  produced, it looks at the entities that ended up co-associated with
+  it and bumps the `strength` of any *pre-existing* relationship
+  between two of them by 0.1 (capped at 1.0). It deliberately does
+  **not** strengthen the relationships the merge/compress pass itself
+  just created or reassigned onto that event — those are new, or
+  already freshly max()-collapsed by `reassign_relationships()` in the
+  same pass, so strengthening them again here would be double-counting.
+  Only a relationship that already existed independently, sourced from
+  some other event entirely, counts as a "bystander" worth reinforcing.
+- **`offline_consolidate(merge_threshold, group_threshold, summarizer=None, dry_run=False)`** —
+  runs the three above in a fixed order (`deduplicate` → `compress` →
+  `strengthen_connections`, not configurable), passing each stage's
+  `ConsolidationReport` into the next where relevant. `compress()` only
+  runs if a `summarizer` is given. Returns one combined
+  `ConsolidationReport`.
+
+**`threshold` has no default, deliberately.** `InMemoryBackend`'s
+TF-IDF cosine, `ChromaBackend`'s `1/(1+distance)`, `HybridBackend`'s
+RRF-fused scores (typically in the ~0.01–0.03 range, not 0–1), and
+`GraphBackend`'s unbounded entity-overlap counts are all on
+incompatible scales — there is no single number that would mean
+"near-duplicate" across all of them. Pick a threshold empirically for
+your backend rather than reusing one from another backend or from the
+tests.
+
+**This is the library's first destructive operation.** Every other
+method in `tiered-memory` only adds or reads; `deduplicate()` and
+`compress()` remove the source events once merged (`strengthen_connections()`
+only ever adjusts `strength` in place, never removes anything). Always
+call with `dry_run=True` first: every method above accepts it, and
+under `dry_run` nothing is added, removed, or mutated — you get back
+the same `ConsolidationReport` shape (with `None` in place of any new
+event id) describing exactly what *would* happen, so you can inspect
+the plan before committing to it.
+
+```python
+from memory_system import TieredMemory
+from memory_system.backends.graph import GraphBackend
+from memory_system.extraction.rules_based import RuleBasedEntityExtractor
+from memory_system.summarization.llm_based import LLMSummarizer
+
+memory = TieredMemory(
+    backend=GraphBackend(extractor=RuleBasedEntityExtractor()),
+    consolidation_policy=...,
+    decay_policy=...,
+)
+# ... store()/consolidate() some long-term memories over time ...
+
+# preview first -- nothing is mutated
+preview = memory.offline_consolidate(
+    merge_threshold=0.85, group_threshold=0.6, summarizer=LLMSummarizer(), dry_run=True
+)
+print(f"would merge {len(preview.merged)} pairs, "
+      f"compress {len(preview.compressed)} groups, "
+      f"strengthen {len(preview.strengthened)} connections")
+
+# satisfied with the plan -- run it for real
+report = memory.offline_consolidate(
+    merge_threshold=0.85, group_threshold=0.6, summarizer=LLMSummarizer()
+)
+```
 
 ## Status
 
@@ -312,8 +412,11 @@ tested, including integration tests against a real `RuleBasedEntityExtractor`
 and a real ChromaDB instance. `HybridBackend` combines `InMemoryBackend`
 and `ChromaBackend` via Reciprocal Rank Fusion, tested against real
 backend instances on both sides. `PerceptSalienceScorer` adds a real,
-embedding-based salience signal alongside the existing toy scorers. API
-may still shift before v1.
+embedding-based salience signal alongside the existing toy scorers.
+Offline consolidation (`deduplicate`/`compress`/`strengthen_connections`/
+`offline_consolidate`, see above) adds periodic long-term-tier cleanup
+on top of the core loop, including a `dry_run` preview mode for its
+destructive operations. API may still shift before v1.
 
 ## Contributing
 
