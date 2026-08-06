@@ -63,7 +63,13 @@ fixed order:
 ```python
 def deduplicate(self, threshold: float, dry_run: bool = False) -> ConsolidationReport: ...
 def compress(self, threshold: float, summarizer: MemorySummarizer, dry_run: bool = False) -> ConsolidationReport: ...
-def strengthen_connections(self, dry_run: bool = False) -> ConsolidationReport: ...
+
+def strengthen_connections(
+    self,
+    merge_report: Optional[ConsolidationReport] = None,
+    compress_report: Optional[ConsolidationReport] = None,
+    dry_run: bool = False,
+) -> ConsolidationReport: ...
 
 def offline_consolidate(
     self,
@@ -82,13 +88,28 @@ def offline_consolidate(
         if summarizer is not None
         else ConsolidationReport()
     )
-    strengthen_report = self.strengthen_connections(dry_run=dry_run)
+    strengthen_report = self.strengthen_connections(merge_report, compress_report, dry_run=dry_run)
     return ConsolidationReport(
         merged=merge_report.merged,
         compressed=compress_report.compressed,
         strengthened=strengthen_report.strengthened,
     )
 ```
+
+**Correction made while writing the implementation plan, not caught during
+design review:** the original version of this signature was
+`strengthen_connections(self, dry_run: bool = False)` -- no way to
+tell it which events `deduplicate()`/`compress()` had just touched.
+"Entities related by this same pass" (see Mechanism 3) is
+undefined without that information; the method literally could not
+have been implemented as originally specified. Writing real,
+executable code for `offline_consolidate()`'s wrapper body is what
+surfaced this -- prose review didn't catch it because the pseudocode
+never had to actually run. `strengthen_connections()` now takes the
+`merge_report`/`compress_report` from the same pass (both optional,
+both `None` by default -- called with neither, correctly, there is
+nothing to strengthen and it returns an empty `ConsolidationReport`).
+`offline_consolidate()`'s wrapper is updated to pass them through.
 
 **Naming:** `offline_consolidate()`, not `sleep()`. Both were
 considered. `store`/`consolidate`/`decay`/`retrieve` are all literal,
@@ -357,11 +378,34 @@ Only `GraphBackend` has connections to strengthen at all;
 backends happens to be a `GraphBackend`:
 
 ```python
-def strengthen_connections(self, dry_run: bool = False) -> ConsolidationReport:
-    graph_backend = self._find_graph_backend(self.backend)
+def strengthen_connections(
+    self,
+    merge_report: Optional[ConsolidationReport] = None,
+    compress_report: Optional[ConsolidationReport] = None,
+    dry_run: bool = False,
+) -> ConsolidationReport:
+    graph_backend = _find_graph_backend(self.backend)
     if graph_backend is None:
         return ConsolidationReport()  # not an error -- this backend has nothing to strengthen
-    ...
+
+    new_ids: list[str] = []
+    if merge_report is not None:
+        new_ids += [new_id for _a, _b, new_id in merge_report.merged if new_id is not None]
+    if compress_report is not None:
+        new_ids += [new_id for _sources, new_id in compress_report.compressed if new_id is not None]
+
+    report = ConsolidationReport()
+    for event_id in new_ids:
+        entities = sorted(graph_backend.entities_for_event(event_id))
+        for i, entity_a in enumerate(entities):
+            for entity_b in entities[i + 1:]:
+                edge = graph_backend.find_edge(entity_a, entity_b)
+                if edge is None:
+                    continue
+                if not dry_run:
+                    edge.strength = min(1.0, edge.strength + 0.1)
+                report.strengthened.append((entity_a, entity_b))
+    return report
 
 def _find_graph_backend(backend: MemoryBackend) -> Optional[GraphBackend]:
     if isinstance(backend, GraphBackend):
@@ -370,6 +414,42 @@ def _find_graph_backend(backend: MemoryBackend) -> Optional[GraphBackend]:
         for sub in (backend.lexical_backend, backend.semantic_backend):
             if isinstance(sub, GraphBackend):
                 return sub
+    return None
+```
+
+**Where the entity pairs actually come from -- resolved concretely,
+not left as "for every pair of entities mentioned across that group,"
+which begged the question of how those entities get found once the
+original source events are gone.** By the time `strengthen_connections()`
+runs, `deduplicate()`/`compress()` have already removed every
+original source event -- their `merge_report`/`compress_report` only
+retain ids, not the events themselves. But that's sufficient: after
+`reassign_relationships()` ran (Mechanisms 1 and 2), every
+relationship either source contributed now has `source_event_id`
+pointing at the *new* merged/summary event. So "which entities were
+related by this pass" is answerable entirely from the new event's id
+-- no need to remember what the old, now-deleted events were
+individually connected to. Two small new public methods on
+`GraphBackend` make this queryable without `strengthen_connections()`
+reaching into `_edges`/`_adjacency` directly:
+
+```python
+def entities_for_event(self, event_id: str) -> set[str]:
+    """Entity ids touched by relationships sourced from this event,
+    as either source or target."""
+    return {
+        eid
+        for rel in self._edges
+        if rel.source_event_id == event_id
+        for eid in (rel.source_id, rel.target_id)
+    }
+
+def find_edge(self, entity_a: str, entity_b: str) -> Optional[Relationship]:
+    """The relationship connecting these two entities, in either
+    direction, or None if none exists."""
+    for rel in self._edges:
+        if {rel.source_id, rel.target_id} == {entity_a, entity_b}:
+            return rel
     return None
 ```
 
@@ -396,15 +476,15 @@ which events came back *together*). Building that tracking is a
 separate feature in its own right -- a new question of where the
 state lives (`TieredMemory`? a running counter on `MemoryEvent`?) and
 its own design pass, not a detail of this one. **v1 strengthens
-connections between entities that were found related by *this same
-consolidation pass*** -- i.e., entities mentioned in events that
-`deduplicate()` or `compress()` just merged or grouped together. For
-every merged/compressed group, for every pair of entities in
-`graph_backend._entities` mentioned across that group's source
-events: if an edge already connects them, bump its `strength` by a
-fixed increment (`+0.1`), capped at `1.0` (matching `confidence`'s
-own typical range, so the two fields stay comparable even though they
-mean different things). **Pairs with no existing edge are skipped,
+connections between entities that ended up associated with the same
+surviving event after this same consolidation pass** -- concretely,
+for each `new_id` in the `merge_report`/`compress_report` passed in,
+every pairwise combination of entities `entities_for_event(new_id)`
+returns: if `find_edge()` says a relationship already connects them,
+bump its `strength` by a fixed increment (`+0.1`), capped at `1.0`
+(matching `confidence`'s own typical range, so the two fields stay
+comparable even though they mean different things). **Pairs with no
+existing edge are skipped,
 not used to create a new one** -- consolidation has no principled way
 to assign a `relation_type` to a brand-new edge (that's
 `EntityExtractor`'s job, working from the original text, which
@@ -471,8 +551,13 @@ Mitigations for v1:
   - `base.py`: `MemorySummarizer` ABC.
   - `llm_based.py`: `LLMSummarizer`, using the existing `llm` extra.
 - `backends/graph.py`: add `strength: float = 1.0` to `Relationship`;
-  add `reassign_relationships(old_event_ids, new_event_id)` as a new
-  public method on `GraphBackend`.
+  add three new public methods on `GraphBackend`:
+  `reassign_relationships(old_event_ids, new_event_id)`,
+  `entities_for_event(event_id)`, `find_edge(entity_a, entity_b)` --
+  the latter two exist so `strengthen_connections()` never has to
+  reach into `_edges`/`_adjacency` directly, consistent with how
+  `reassign_relationships()` was added instead of doing the same from
+  `core.py`.
 
 ## Testing
 
@@ -508,7 +593,10 @@ Mitigations for v1:
   `HybridBackend` wrapping a `GraphBackend` as one of its two
   composed backends, to exercise `_find_graph_backend`'s reach-through
   path. Also: `InMemoryBackend`/`ChromaBackend` alone return an empty
-  `ConsolidationReport`, not an error.
+  `ConsolidationReport`, not an error. Also: called with no
+  `merge_report`/`compress_report` (the default), returns an empty
+  `ConsolidationReport` even against a real `GraphBackend` -- there is
+  nothing to strengthen without knowing which pass produced what.
 - Execution order: a test that constructs a scenario where, if
   `strengthen_connections()` ran before `deduplicate()`, it would
   strengthen an edge belonging to an event that dedup is about to
