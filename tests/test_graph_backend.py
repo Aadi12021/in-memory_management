@@ -7,10 +7,15 @@ class ScriptedExtractor(EntityExtractor):
     traversal/structure logic can be tested against a graph shape the
     test controls exactly. event.content is a dict of the form
     {"entities": [id, ...], "edges": [(source_id, target_id, relation_type), ...]}.
+    Content that isn't dict-shaped (e.g. a plain summary string from
+    compress()) yields no entities/relationships -- same fail-soft
+    convention real extractors use for content they can't parse.
     """
 
     def extract(self, event: MemoryEvent) -> tuple[list[Entity], list[Relationship]]:
         spec = event.content
+        if not isinstance(spec, dict):
+            return [], []
         entities: dict[str, Entity] = {eid: Entity(id=eid, label=eid) for eid in spec.get("entities", [])}
         relationships: list[Relationship] = []
         for source_id, target_id, relation_type in spec.get("edges", []):

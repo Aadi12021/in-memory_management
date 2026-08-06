@@ -8,6 +8,7 @@ from typing import Any, Optional
 from .backends.base import MemoryBackend
 from .backends.graph import GraphBackend
 from .backends.hybrid import HybridBackend
+from .summarization.base import MemorySummarizer
 from .events import ConsolidationReport, MemoryEvent, MemoryTier, RetrievalResult
 from .policies.consolidation import ConsolidationPolicy
 from .policies.decay import DecayPolicy
@@ -57,6 +58,42 @@ def _find_graph_backend(backend: MemoryBackend) -> Optional[GraphBackend]:
             if isinstance(sub, GraphBackend):
                 return sub
     return None
+
+
+def _connected_components(
+    pairs: list[tuple[MemoryEvent, MemoryEvent, float]]
+) -> list[list[MemoryEvent]]:
+    """Groups events into connected components over the similarity
+    pairs found by _find_similar_pairs -- e.g. if (a, b) and (b, c) are
+    both above threshold, a/b/c end up in one group even though a and
+    c were never compared directly.
+    """
+    adjacency: dict[str, set[str]] = {}
+    events_by_id: dict[str, MemoryEvent] = {}
+    for a, b, _score in pairs:
+        events_by_id[a.id] = a
+        events_by_id[b.id] = b
+        adjacency.setdefault(a.id, set()).add(b.id)
+        adjacency.setdefault(b.id, set()).add(a.id)
+
+    visited: set[str] = set()
+    components: list[list[MemoryEvent]] = []
+    for event_id in adjacency:
+        if event_id in visited:
+            continue
+        component_ids: list[str] = []
+        frontier = [event_id]
+        visited.add(event_id)
+        while frontier:
+            current = frontier.pop()
+            component_ids.append(current)
+            for neighbor in adjacency.get(current, ()):
+                if neighbor not in visited:
+                    visited.add(neighbor)
+                    frontier.append(neighbor)
+        components.append([events_by_id[eid] for eid in component_ids])
+
+    return components
 
 
 class TieredMemory:
@@ -151,6 +188,55 @@ class TieredMemory:
             report.merged.append((a.id, b.id, new_id))
             merged_event_ids.add(a.id)
             merged_event_ids.add(b.id)
+
+        return report
+
+    def compress(
+        self, threshold: float, summarizer: MemorySummarizer, dry_run: bool = False
+    ) -> ConsolidationReport:
+        """Groups related long-term memories and replaces each group
+        with one LLM-generated summary. `threshold` is required for
+        the same reason deduplicate()'s is -- no universal default
+        across backends with incompatible score scales.
+        """
+        pairs = _find_similar_pairs(self.backend, MemoryTier.LONG_TERM, threshold)
+        graph_backend = _find_graph_backend(self.backend)
+        now = datetime.now(timezone.utc)
+
+        groups = _connected_components(pairs)
+
+        report = ConsolidationReport()
+        for group_events in groups:
+            if len(group_events) < 2:
+                continue
+
+            new_id = None
+            if not dry_run:
+                try:
+                    summary_text = summarizer.summarize(group_events)
+                except Exception:
+                    # fail soft: a broken/unavailable LLM call shouldn't
+                    # abort the whole pass, it should just mean this
+                    # group is skipped
+                    continue
+                summary_event = MemoryEvent(
+                    content=summary_text,
+                    timestamp=min(e.timestamp for e in group_events),
+                    tier=MemoryTier.LONG_TERM,
+                    salience=max(e.salience for e in group_events),
+                    metadata={"summarized_from": [e.id for e in group_events]},
+                    last_reinforced=now,
+                )
+                self.backend.add(summary_event)
+                if graph_backend is not None:
+                    graph_backend.reassign_relationships(
+                        [e.id for e in group_events], summary_event.id
+                    )
+                for event in group_events:
+                    self.backend.remove(event.id)
+                new_id = summary_event.id
+
+            report.compressed.append(([e.id for e in group_events], new_id))
 
         return report
 

@@ -14,6 +14,7 @@ from memory_system.backends.hybrid import HybridBackend
 from memory_system.backends.memory import InMemoryBackend
 from memory_system.core import _find_similar_pairs, _find_graph_backend
 from memory_system.events import MemoryEvent, MemoryTier
+from memory_system.summarization.base import MemorySummarizer
 
 
 def make_long_term_event(content):
@@ -238,3 +239,111 @@ def test_deduplicate_on_graph_backend_preserves_entities_unique_to_each_source()
     assert len(remaining) == 1
     assert remaining[0].id == merged_id
     assert remaining[0].content == a.content
+
+
+class FakeSummarizer(MemorySummarizer):
+    """Test double: returns fixed text without calling any API,
+    records what it was called with -- matches test_hybrid_backend.py's
+    StubBackend pattern for testing orchestration logic in isolation
+    from a real dependency.
+    """
+
+    def __init__(self, summary_text="a summary"):
+        self.summary_text = summary_text
+        self.calls: list[list[MemoryEvent]] = []
+
+    def summarize(self, events):
+        self.calls.append(events)
+        return self.summary_text
+
+
+def test_compress_groups_and_summarizes_related_events():
+    memory = make_long_term_memory()
+    a = add_long_term(memory, "User is severely allergic to peanuts.")
+    b = add_long_term(memory, "User is severely allergic to peanuts and tree nuts.")
+    summarizer = FakeSummarizer("User has peanut and tree nut allergies.")
+
+    report = memory.compress(threshold=0.3, summarizer=summarizer)
+
+    assert len(report.compressed) == 1
+    source_ids, new_id = report.compressed[0]
+    assert set(source_ids) == {a.id, b.id}
+    remaining = memory.backend.get_all(tier=MemoryTier.LONG_TERM)
+    assert len(remaining) == 1
+    assert remaining[0].id == new_id
+    assert remaining[0].content == "User has peanut and tree nut allergies."
+
+
+def test_compress_salience_is_max_of_group():
+    memory = make_long_term_memory()
+    add_long_term(memory, "User is severely allergic to peanuts.", salience=0.3)
+    add_long_term(memory, "User is severely allergic to peanuts and tree nuts.", salience=0.9)
+
+    memory.compress(threshold=0.3, summarizer=FakeSummarizer())
+
+    remaining = memory.backend.get_all(tier=MemoryTier.LONG_TERM)
+    assert remaining[0].salience == 0.9
+
+
+def test_compress_records_summarized_from_provenance():
+    memory = make_long_term_memory()
+    a = add_long_term(memory, "User is severely allergic to peanuts.")
+    b = add_long_term(memory, "User is severely allergic to peanuts and tree nuts.")
+
+    memory.compress(threshold=0.3, summarizer=FakeSummarizer())
+
+    remaining = memory.backend.get_all(tier=MemoryTier.LONG_TERM)
+    assert set(remaining[0].metadata["summarized_from"]) == {a.id, b.id}
+
+
+def test_compress_dry_run_does_not_mutate_backend_or_call_summarizer():
+    memory = make_long_term_memory()
+    a = add_long_term(memory, "User is severely allergic to peanuts.")
+    b = add_long_term(memory, "User is severely allergic to peanuts and tree nuts.")
+    summarizer = FakeSummarizer()
+
+    report = memory.compress(threshold=0.3, summarizer=summarizer, dry_run=True)
+
+    assert len(report.compressed) == 1
+    assert report.compressed[0][1] is None
+    assert summarizer.calls == []
+    remaining_ids = {e.id for e in memory.backend.get_all(tier=MemoryTier.LONG_TERM)}
+    assert remaining_ids == {a.id, b.id}
+
+
+def test_compress_skips_group_when_summarizer_raises():
+    memory = make_long_term_memory()
+    a = add_long_term(memory, "User is severely allergic to peanuts.")
+    b = add_long_term(memory, "User is severely allergic to peanuts and tree nuts.")
+
+    class BrokenSummarizer(MemorySummarizer):
+        def summarize(self, events):
+            raise RuntimeError("API unavailable")
+
+    report = memory.compress(threshold=0.3, summarizer=BrokenSummarizer())
+
+    assert report.compressed == []
+    remaining_ids = {e.id for e in memory.backend.get_all(tier=MemoryTier.LONG_TERM)}
+    assert remaining_ids == {a.id, b.id}  # nothing removed, group was skipped
+
+
+def test_compress_on_graph_backend_preserves_entities_the_summary_omits():
+    graph = GraphBackend(extractor=ScriptedExtractor())
+    memory = TieredMemory(backend=graph, consolidation_policy=AlwaysConsolidate(), decay_policy=NoDecay())
+    a = MemoryEvent(content={"entities": [], "edges": [("user", "peanut", "ALLERGIC_TO")]}, tier=MemoryTier.LONG_TERM)
+    b = MemoryEvent(content={"entities": [], "edges": [("user", "hiking", "ENJOYS")]}, tier=MemoryTier.LONG_TERM)
+    c = MemoryEvent(content={"entities": [], "edges": [("user", "quinoa", "ENJOYS")]}, tier=MemoryTier.LONG_TERM)
+    for event in (a, b, c):
+        memory.backend.add(event)
+
+    # all three share only the "user" entity, so GraphBackend's
+    # entity-overlap query() cross-scores every pair at 1.0 (verified
+    # empirically) -- threshold=1.0 groups all three into one component.
+    # A fake summary that only mentions "peanut" simulates exactly what a
+    # real LLM summary would plausibly do with a 3-item group.
+    summarizer = FakeSummarizer("User has a peanut allergy.")
+    report = memory.compress(threshold=1.0, summarizer=summarizer)
+
+    assert len(report.compressed) == 1
+    result = graph.related_to("user", max_hops=1)
+    assert {e.id for e in result} == {"peanut", "hiking", "quinoa"}
