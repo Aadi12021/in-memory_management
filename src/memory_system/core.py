@@ -287,6 +287,33 @@ class TieredMemory:
 
         return report
 
+    def offline_consolidate(
+        self,
+        merge_threshold: float,
+        group_threshold: float,
+        summarizer: Optional[MemorySummarizer] = None,
+        dry_run: bool = False,
+    ) -> ConsolidationReport:
+        """Runs deduplicate() -> compress() -> strengthen_connections(),
+        in that fixed order, not configurable. GraphBackend.remove()
+        already prunes edges for removed events as a side effect, so
+        running strengthen_connections() last is the only ordering
+        that doesn't waste work against code that already exists --
+        see docs/superpowers/specs/2026-08-06-offline-consolidation.md.
+        """
+        merge_report = self.deduplicate(merge_threshold, dry_run=dry_run)
+        compress_report = (
+            self.compress(group_threshold, summarizer, dry_run=dry_run)
+            if summarizer is not None
+            else ConsolidationReport()
+        )
+        strengthen_report = self.strengthen_connections(merge_report, compress_report, dry_run=dry_run)
+        return ConsolidationReport(
+            merged=merge_report.merged,
+            compressed=compress_report.compressed,
+            strengthened=strengthen_report.strengthened,
+        )
+
     def decay(self, now: Optional[datetime] = None) -> int:
         """Run a decay pass, removing events whose strength has fallen
         below the forget floor. Returns the number of events forgotten.

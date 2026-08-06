@@ -458,3 +458,71 @@ def test_strengthen_connections_on_non_graph_backend_returns_empty():
     report = memory.strengthen_connections()
 
     assert report.strengthened == []
+
+
+def test_offline_consolidate_runs_dedup_then_compress():
+    memory = make_long_term_memory()
+    a = add_long_term(memory, "User is severely allergic to peanuts.")
+    b = add_long_term(memory, "User is severely allergic to peanuts and tree nuts.")
+
+    report = memory.offline_consolidate(merge_threshold=0.3, group_threshold=0.3)
+
+    assert len(report.merged) == 1
+    assert set(report.merged[0][:2]) == {a.id, b.id}
+    remaining = memory.backend.get_all(tier=MemoryTier.LONG_TERM)
+    assert len(remaining) == 1
+
+
+def test_offline_consolidate_skips_compress_when_no_summarizer_given():
+    memory = make_long_term_memory()
+    add_long_term(memory, "User is severely allergic to peanuts.")
+    add_long_term(memory, "User is severely allergic to peanuts and tree nuts.")
+
+    report = memory.offline_consolidate(merge_threshold=0.3, group_threshold=0.3)
+
+    assert report.compressed == []
+
+
+def test_offline_consolidate_dry_run_mutates_nothing():
+    memory = make_long_term_memory()
+    a = add_long_term(memory, "User is severely allergic to peanuts.")
+    b = add_long_term(memory, "User is severely allergic to peanuts and tree nuts.")
+
+    report = memory.offline_consolidate(merge_threshold=0.3, group_threshold=0.9, dry_run=True)
+
+    assert len(report.merged) == 1
+    assert report.merged[0][2] is None
+    remaining_ids = {e.id for e in memory.backend.get_all(tier=MemoryTier.LONG_TERM)}
+    assert remaining_ids == {a.id, b.id}
+
+
+def test_offline_consolidate_order_prevents_strengthening_edges_about_to_be_removed():
+    """If strengthen_connections() ran BEFORE deduplicate() (the wrong
+    order), it would strengthen edges belonging to events dedup is
+    about to remove -- and since GraphBackend.remove() prunes edges by
+    source_event_id, those edges would then be deleted moments after
+    being strengthened, wasted work at best. Running dedup first means
+    that by the time strengthen_connections() runs, source_event_id on
+    every surviving edge already points at the merged event, not a
+    doomed original -- so this test isn't just checking dedup ran
+    first, it's checking the edges strengthen_connections() sees are
+    the actual final, post-cleanup ones, not ones about to vanish.
+    """
+    graph = GraphBackend(extractor=ScriptedExtractor())
+    memory = TieredMemory(backend=graph, consolidation_policy=AlwaysConsolidate(), decay_policy=NoDecay())
+    unrelated = MemoryEvent(content={"entities": [], "edges": [("peanut", "protein", "CONTAINS")]})
+    graph.add(unrelated)
+    graph.find_edge("peanut", "protein").strength = 0.5
+    a = MemoryEvent(content={"entities": [], "edges": [("user", "peanut", "ALLERGIC_TO")]}, tier=MemoryTier.LONG_TERM)
+    b = MemoryEvent(content={"entities": [], "edges": [("user", "protein", "ALLERGIC_TO")]}, tier=MemoryTier.LONG_TERM)
+    memory.backend.add(a)
+    memory.backend.add(b)
+
+    report = memory.offline_consolidate(merge_threshold=1.0, group_threshold=1.0)
+
+    assert graph.find_edge("peanut", "protein").strength == 0.6
+    merged_id = report.merged[0][2]
+    assert {"user", "peanut", "protein"} <= graph.entities_for_event(merged_id)
+    remaining_ids = {e.id for e in graph.get_all()}
+    assert a.id not in remaining_ids
+    assert b.id not in remaining_ids
