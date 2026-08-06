@@ -48,6 +48,9 @@ class Relationship:
     relation_type: str         # e.g. "ALLERGIC_TO", "ENJOYS", "INGREDIENT_OF"
     source_event_id: str       # which MemoryEvent this came from
     confidence: float = 1.0    # extraction confidence, see extraction problem
+    strength: float = 1.0      # consolidation-reinforced importance -- distinct from
+                                # confidence, which is about extraction certainty, not
+                                # how reinforced this connection has become over time
     metadata: dict = field(default_factory=dict)
 
 
@@ -151,6 +154,97 @@ class GraphBackend(MemoryBackend):
     def remove(self, event_id: str) -> None:
         self._events.pop(event_id, None)
         self._edges[:] = [e for e in self._edges if e.source_event_id != event_id]
+
+    def reassign_relationships(self, old_event_ids: list[str], new_event_id: str) -> list[Relationship]:
+        """Retargets every relationship whose source_event_id is in
+        old_event_ids to point at new_event_id instead, preserving the
+        relationships themselves rather than re-deriving them via
+        extraction from a single surviving content string, which would
+        silently drop anything only present in a discarded event's
+        original phrasing (see docs/superpowers/specs/
+        2026-08-06-offline-consolidation.md).
+
+        Also folds in any pre-existing relationships already attached to
+        new_event_id into the same collapsing pass, so that if add()
+        extraction re-creates a matching relationship on new_event_id
+        before this call, it participates in max()-collapsing rather than
+        creating a duplicate.
+
+        Relationships that become identical after reassignment (same
+        source_id, target_id, relation_type, now all pointing at
+        new_event_id) collapse into one, keeping max(confidence) and
+        max(strength) across the collapsed set. Mutates matching
+        Relationship objects in place (self._edges and self._adjacency
+        hold references to the same objects, so no separate adjacency
+        update is needed for survivors); removed duplicates are
+        filtered out of both by object identity, not value equality,
+        since dataclass equality could otherwise match the wrong
+        object when two relationships happen to share all field
+        values.
+
+        Returns the relationships now attached to new_event_id.
+        """
+        old_ids = set(old_event_ids)
+        affected = [
+            rel for rel in self._edges
+            if rel.source_event_id in old_ids or rel.source_event_id == new_event_id
+        ]
+
+        groups: dict[tuple[str, str, str], list[Relationship]] = {}
+        for rel in affected:
+            key = (rel.source_id, rel.target_id, rel.relation_type)
+            groups.setdefault(key, []).append(rel)
+
+        redundant_object_ids: set[int] = set()
+        survivors: list[Relationship] = []
+        for group in groups.values():
+            survivor = group[0]
+            survivor.source_event_id = new_event_id
+            if len(group) > 1:
+                survivor.confidence = max(rel.confidence for rel in group)
+                survivor.strength = max(rel.strength for rel in group)
+                redundant_object_ids.update(id(rel) for rel in group[1:])
+            survivors.append(survivor)
+
+        if redundant_object_ids:
+            self._edges[:] = [rel for rel in self._edges if id(rel) not in redundant_object_ids]
+            for entity_id in self._adjacency:
+                self._adjacency[entity_id] = [
+                    rel for rel in self._adjacency[entity_id] if id(rel) not in redundant_object_ids
+                ]
+
+        return survivors
+
+    def entities_for_event(self, event_id: str) -> set[str]:
+        """Entity ids touched by relationships sourced from this
+        event, as either source or target."""
+        return {
+            eid
+            for rel in self._edges
+            if rel.source_event_id == event_id
+            for eid in (rel.source_id, rel.target_id)
+        }
+
+    def find_edges(self, entity_a: str, entity_b: str) -> list[Relationship]:
+        """All relationships connecting these two entities, in either
+        direction. The graph model permits parallel typed edges between
+        the same pair of entities -- reassign_relationships() groups by
+        (source_id, target_id, relation_type), so two relationships with
+        different relation_type both survive between the same pair --
+        so callers that need to consider every relationship for a pair,
+        not just one, must use this rather than find_edge()."""
+        return [
+            rel for rel in self._edges
+            if {rel.source_id, rel.target_id} == {entity_a, entity_b}
+        ]
+
+    def find_edge(self, entity_a: str, entity_b: str) -> Optional[Relationship]:
+        """The relationship connecting these two entities, in either
+        direction, or None if none exists. When more than one
+        relationship connects the same pair (different relation_types),
+        returns an arbitrary one of them -- use find_edges() when that
+        matters."""
+        return next(iter(self.find_edges(entity_a, entity_b)), None)
 
     # --- graph-native methods, the actual point of this backend -------
 

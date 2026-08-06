@@ -1586,12 +1586,37 @@ In `src/memory_system/core.py`, add `strengthen_connections()` as a new method o
                     edge = graph_backend.find_edge(entity_a, entity_b)
                     if edge is None:
                         continue
+                    # Only strengthen edges that are NOT part of this consolidation event itself
+                    # (those edges' confidence/strength are already handled by the merge/compress).
+                    # Strengthen only "external" edges that happen to connect co-mentioned entities.
+                    if edge.source_event_id == event_id:
+                        continue
                     if not dry_run:
                         edge.strength = min(1.0, edge.strength + 0.1)
                     report.strengthened.append((entity_a, entity_b))
 
         return report
 ```
+
+**Correction made while writing this plan, not caught during design
+review:** the code block above, exactly as originally specified in the
+approved spec, cannot pass the Step 1 test also mandated by that same
+spec (`test_strengthen_connections_bumps_edge_between_entities_co_associated_by_merge`,
+which asserts a merge strengthens *only* the pre-existing bystander
+edge between `peanut` and `protein`). `deduplicate()`'s merge action
+calls `self.backend.add(merged_event)` -- which re-runs entity
+extraction and creates fresh relationships sourced from the new event
+-- *before* `reassign_relationships()` retargets the discarded event's
+relationships onto that same new id. So `entities_for_event(new_id)`
+ends up covering entities from both the freshly-extracted edge and the
+reassigned edge, and the literal algorithm strengthens every pairwise
+combination among them, including the edges that are themselves part
+of the merge just performed -- not just the one bystander edge the
+test expects. Verified empirically while implementing Task 7: running
+the literal algorithm against the test's exact scenario produces 3
+strengthened pairs, but the test asserts exactly 1. Fix, already
+folded into the code block above: skip any edge whose
+`source_event_id` equals the `event_id` currently being processed.
 
 - [ ] **Step 4: Run tests to verify they pass**
 
