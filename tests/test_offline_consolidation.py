@@ -1,10 +1,18 @@
 from __future__ import annotations
 
+import sys
 from datetime import datetime, timezone
+from pathlib import Path
+
+# Import ScriptedExtractor from test_graph_backend
+sys.path.insert(0, str(Path(__file__).parent))
+from test_graph_backend import ScriptedExtractor
 
 from memory_system import AlwaysConsolidate, NoDecay, TieredMemory
+from memory_system.backends.graph import GraphBackend
+from memory_system.backends.hybrid import HybridBackend
 from memory_system.backends.memory import InMemoryBackend
-from memory_system.core import _find_similar_pairs
+from memory_system.core import _find_similar_pairs, _find_graph_backend
 from memory_system.events import MemoryEvent, MemoryTier
 
 
@@ -180,3 +188,53 @@ def test_deduplicate_dry_run_does_not_mutate_backend():
     assert report.merged[0][2] is None
     remaining_ids = {e.id for e in memory.backend.get_all(tier=MemoryTier.LONG_TERM)}
     assert remaining_ids == {a.id, b.id}
+
+
+def test_find_graph_backend_returns_graph_backend_directly():
+    graph = GraphBackend(extractor=ScriptedExtractor())
+    assert _find_graph_backend(graph) is graph
+
+
+def test_find_graph_backend_finds_it_inside_hybrid_backend():
+    lexical = InMemoryBackend()
+    graph = GraphBackend(extractor=ScriptedExtractor())
+    hybrid = HybridBackend(lexical_backend=lexical, semantic_backend=graph)
+    assert _find_graph_backend(hybrid) is graph
+
+
+def test_find_graph_backend_returns_none_for_plain_backend():
+    assert _find_graph_backend(InMemoryBackend()) is None
+
+
+def test_deduplicate_on_graph_backend_preserves_entities_unique_to_each_source():
+    graph = GraphBackend(extractor=ScriptedExtractor())
+    memory = TieredMemory(backend=graph, consolidation_policy=AlwaysConsolidate(), decay_policy=NoDecay())
+    a = MemoryEvent(
+        content={"entities": [], "edges": [("user", "peanut", "ALLERGIC_TO")]},
+        tier=MemoryTier.LONG_TERM, salience=0.9,
+    )
+    b = MemoryEvent(
+        content={"entities": [], "edges": [("user", "hiking", "ENJOYS")]},
+        tier=MemoryTier.LONG_TERM, salience=0.2,
+    )
+    memory.backend.add(a)
+    memory.backend.add(b)
+
+    # a and b share only the "user" entity, so GraphBackend's entity-overlap
+    # query() scores this cross-pair at 1.0 (verified empirically) --
+    # threshold=1.0 finds it, self-matches score 2.0 (both of a's own
+    # entities) and are excluded by _find_similar_pairs regardless.
+    report = memory.deduplicate(threshold=1.0)
+
+    assert len(report.merged) == 1
+    merged_id = report.merged[0][2]
+    # a had higher salience, so its content (only mentioning "peanut")
+    # survives verbatim -- but b's ENJOYS/hiking relationship must still be
+    # preserved via reassign_relationships, not lost just because b's
+    # content didn't survive.
+    result = graph.related_to("user", max_hops=1)
+    assert {e.id for e in result} == {"peanut", "hiking"}
+    remaining = memory.backend.get_all(tier=MemoryTier.LONG_TERM)
+    assert len(remaining) == 1
+    assert remaining[0].id == merged_id
+    assert remaining[0].content == a.content

@@ -6,6 +6,8 @@ from datetime import datetime, timezone
 from typing import Any, Optional
 
 from .backends.base import MemoryBackend
+from .backends.graph import GraphBackend
+from .backends.hybrid import HybridBackend
 from .events import ConsolidationReport, MemoryEvent, MemoryTier, RetrievalResult
 from .policies.consolidation import ConsolidationPolicy
 from .policies.decay import DecayPolicy
@@ -39,6 +41,22 @@ def _find_similar_pairs(
             seen_pairs.add(pair_key)
             pairs.append((event, result.event, result.score))
     return pairs
+
+
+def _find_graph_backend(backend: MemoryBackend) -> Optional[GraphBackend]:
+    """Finds the GraphBackend relevant to graph-specific consolidation
+    steps: `backend` itself if it is one, or whichever of a
+    HybridBackend's two composed backends is one. Returns None for any
+    other backend, which callers treat as "nothing to do here," not an
+    error -- most backends have no graph structure at all.
+    """
+    if isinstance(backend, GraphBackend):
+        return backend
+    if isinstance(backend, HybridBackend):
+        for sub in (backend.lexical_backend, backend.semantic_backend):
+            if isinstance(sub, GraphBackend):
+                return sub
+    return None
 
 
 class TieredMemory:
@@ -102,6 +120,7 @@ class TieredMemory:
         2026-08-06-offline-consolidation.md.
         """
         pairs = _find_similar_pairs(self.backend, MemoryTier.LONG_TERM, threshold)
+        graph_backend = _find_graph_backend(self.backend)
         now = datetime.now(timezone.utc)
 
         report = ConsolidationReport()
@@ -123,6 +142,8 @@ class TieredMemory:
                     last_reinforced=now,
                 )
                 self.backend.add(merged_event)
+                if graph_backend is not None:
+                    graph_backend.reassign_relationships([a.id, b.id], merged_event.id)
                 self.backend.remove(a.id)
                 self.backend.remove(b.id)
                 new_id = merged_event.id
