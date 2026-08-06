@@ -373,6 +373,41 @@ def test_strengthen_connections_bumps_edge_between_entities_co_associated_by_mer
     assert {frozenset(pair) for pair in report.strengthened} == {frozenset({"peanut", "protein"})}
 
 
+def test_strengthen_connections_skips_edges_sourced_from_the_consolidation_event_itself():
+    # No pre-existing "bystander" edge here at all -- every edge that
+    # ends up touching the merged event's entities is either freshly
+    # extracted from the surviving event's own content or reassigned
+    # onto it by reassign_relationships(). Both are "part of this
+    # consolidation event" by definition (source_event_id == new_id),
+    # so strengthen_connections() must skip all of them. If the
+    # source_event_id == event_id guard were removed, this would find
+    # the (user, peanut) and (user, protein) edges the merge itself
+    # just created and strengthen them, which is exactly the bug this
+    # guard exists to prevent (see review discussion in
+    # docs/superpowers/specs/2026-08-06-offline-consolidation.md,
+    # Mechanism 3).
+    graph = GraphBackend(extractor=ScriptedExtractor())
+    memory = TieredMemory(backend=graph, consolidation_policy=AlwaysConsolidate(), decay_policy=NoDecay())
+
+    a = MemoryEvent(content={"entities": [], "edges": [("user", "peanut", "ALLERGIC_TO")]}, tier=MemoryTier.LONG_TERM)
+    b = MemoryEvent(content={"entities": [], "edges": [("user", "protein", "ALLERGIC_TO")]}, tier=MemoryTier.LONG_TERM)
+    memory.backend.add(a)
+    memory.backend.add(b)
+    merge_report = memory.deduplicate(threshold=1.0)
+    assert len(merge_report.merged) == 1
+    new_id = merge_report.merged[0][2]
+
+    # Sanity check on the premise: entities_for_event(new_id) really
+    # does include entities from both the surviving event's own edge
+    # and the reassigned edge from the discarded event -- so there IS
+    # a pairwise combination for the guard to have to skip.
+    assert graph.entities_for_event(new_id) >= {"user", "peanut", "protein"}
+
+    report = memory.strengthen_connections(merge_report=merge_report)
+
+    assert report.strengthened == []
+
+
 def test_strengthen_connections_caps_at_one():
     graph = GraphBackend(extractor=ScriptedExtractor())
     memory = TieredMemory(backend=graph, consolidation_policy=AlwaysConsolidate(), decay_policy=NoDecay())

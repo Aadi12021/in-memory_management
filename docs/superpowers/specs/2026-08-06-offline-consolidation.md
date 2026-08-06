@@ -402,6 +402,10 @@ def strengthen_connections(
                 edge = graph_backend.find_edge(entity_a, entity_b)
                 if edge is None:
                     continue
+                # Skip edges that are themselves part of this
+                # consolidation event -- see the correction note below.
+                if edge.source_event_id == event_id:
+                    continue
                 if not dry_run:
                     edge.strength = min(1.0, edge.strength + 0.1)
                 report.strengthened.append((entity_a, entity_b))
@@ -416,6 +420,28 @@ def _find_graph_backend(backend: MemoryBackend) -> Optional[GraphBackend]:
                 return sub
     return None
 ```
+
+**Correction made while writing the implementation plan, not caught during
+design review:** the algorithm above, exactly as originally specified, is
+inconsistent with the test this same spec mandates below (a merge
+co-associating two entities via a pre-existing, unrelated edge between
+them, asserting only that edge gets strengthened). By the time
+`strengthen_connections()` runs, `deduplicate()`/`compress()` have
+already given the merged/summary event its *own* relationships two
+ways: `add()` re-runs entity extraction against the surviving event's
+content, and `reassign_relationships()` retargets the discarded
+events' relationships onto the same new event id. `entities_for_event(new_id)`
+therefore returns entities from both sources indiscriminately -- it
+cannot tell "an edge that happens to connect two entities this merge
+brought together" apart from "an edge that IS this merge." Without an
+exclusion, the literal algorithm strengthens both: run against the
+mandated test's exact scenario, it produces 3 strengthened pairs where
+the test asserts exactly 1 (verified empirically during implementation).
+The fix, now reflected in the code block above: skip any edge whose
+`source_event_id` equals the `event_id` currently being processed --
+those edges' confidence/strength are already handled by the merge/
+compress that just created them; only genuinely external "bystander"
+edges between co-associated entities are eligible for strengthening.
 
 **Where the entity pairs actually come from -- resolved concretely,
 not left as "for every pair of entities mentioned across that group,"
