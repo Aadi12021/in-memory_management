@@ -105,14 +105,20 @@ things, so a count alone hides what actually happened:
 ```python
 @dataclass
 class ConsolidationReport:
-    merged: list[tuple[str, str, str]] = field(default_factory=list)       # (source_a_id, source_b_id, new_id)
-    compressed: list[tuple[list[str], str]] = field(default_factory=list)  # (source_ids, new_summary_id)
-    strengthened: list[tuple[str, str]] = field(default_factory=list)      # (source_id, target_id) entity pairs
+    merged: list[tuple[str, str, Optional[str]]] = field(default_factory=list)       # (source_a_id, source_b_id, new_id)
+    compressed: list[tuple[list[str], Optional[str]]] = field(default_factory=list)  # (source_ids, new_summary_id)
+    strengthened: list[tuple[str, str]] = field(default_factory=list)                # (source_id, target_id) entity pairs
 ```
 
 Every method returns this same shape whether `dry_run=True` or not --
 a dry run answers "what would happen," a real run answers "what did
-happen," same fields either way.
+happen," same fields either way, with one exception: `new_id`/
+`new_summary_id` is `None` under `dry_run=True`. A dry run never calls
+`add()`, so there is no real `MemoryEvent.id` to report -- inventing
+one just for display would imply an event exists that doesn't. The
+source ids (always real, since dry runs still identify *which*
+existing events would merge or group) are what a dry run is actually
+for; the synthesized id only exists once a real pass creates it.
 
 ## Mechanism 1: Deduplication / merging
 
@@ -184,17 +190,106 @@ originals, `add()` one new event.
   values win on key conflicts), plus `metadata["merged_from"] =
   [a.id, b.id]` -- the only provenance trail v1 keeps (see Safety).
 
-**`GraphBackend`-specific consequence, worth stating plainly.**
-`GraphBackend.add()` re-runs entity extraction on whatever content
-it's given. Since a merged event keeps only one source's content
-verbatim (not a combination), any entities/relationships that were
-unique to the *discarded* source's text are not re-extracted and
-effectively drop out of the graph -- they were never in the surviving
-content for the extractor to find again. This is an accepted
-consequence of "merge picks a representative, it doesn't synthesize"
-(re-affirmed above), not an oversight, but it's the kind of thing that
-looks like a bug if it's only discovered during implementation rather
-than named here.
+**`GraphBackend`-specific fix: reassign existing relationships, don't
+rely on re-extraction.** `GraphBackend.add()` re-runs entity
+extraction on whatever content it's given. Since a merged event keeps
+only one source's content verbatim (not a combination), relying on
+`add(merged_event)` alone would let entities/relationships that were
+unique to the *discarded* source's text quietly vanish -- not because
+they were judged redundant, but because the extractor never saw that
+text again. Deduplication is supposed to mean "these are the same
+fact, keep one," not "discard information" -- silent, unmeasured
+information loss inside an operation whose whole premise is
+losslessness is a real defect, not an accepted tradeoff of "merge
+doesn't synthesize." (Entity *nodes* themselves are never actually at
+risk -- `self._entities` is a global dict keyed by canonical entity
+id, not scoped to any one event, so an entity record isn't deleted by
+removing the event that introduced it. What's actually at risk is the
+*edges*: `GraphBackend.remove(event_id)` deletes every `Relationship`
+whose `source_event_id` matches, and if a discarded source's edges
+aren't preserved before that removal runs, every relationship it
+contributed disappears. An entity left with zero surviving edges is
+still technically present in `_entities`, but unreachable from
+`related_to()`/`explain_path()` traversal -- functionally gone from
+the graph even though its bare record isn't physically deleted.)
+
+The fix: **reuse the extraction that already happened for both
+sources**, instead of re-deriving from whichever single text string
+survives. New public method on `GraphBackend`:
+
+```python
+def reassign_relationships(self, old_event_ids: list[str], new_event_id: str) -> list[Relationship]:
+    """Retargets every relationship whose source_event_id is in
+    old_event_ids to point at new_event_id instead, preserving the
+    relationships themselves (entities, relation_type, confidence,
+    strength) rather than re-deriving them from a single surviving
+    content string, which would silently drop anything only present
+    in a discarded event's original phrasing.
+
+    Collapses relationships that become identical after reassignment
+    (same source_id, target_id, relation_type now all pointing at
+    new_event_id) into one, keeping max(confidence) and max(strength)
+    across the collapsed set -- same reasoning as salience's max() on
+    event merge: two sources independently asserting the same fact
+    should end up as one edge at least as strong as either alone, not
+    two parallel duplicates and not a diluted average. Does NOT apply
+    strengthen_connections()'s separate +0.1 reinforcement bump --
+    that stays strengthen_connections()'s job alone (see Mechanism 3
+    and Execution order), so a collapsed edge isn't double-boosted by
+    both mechanisms in the same pass.
+
+    Returns the relationships now attached to new_event_id.
+    """
+```
+
+`deduplicate()`'s merge action, for a `GraphBackend` (or a
+`HybridBackend` composed with one, via the same `_find_graph_backend`
+helper `strengthen_connections()` uses), becomes, per merged pair:
+
+1. `backend.add(merged_event)` -- stores the merged event; its own
+   `add()` re-extracts from the surviving content as usual, so
+   entities/relationships still present in that text are captured
+   the normal way.
+2. `graph_backend.reassign_relationships([a.id, b.id], merged_event.id)`
+   -- retargets *every* relationship either original source
+   contributed (including ones step 1's re-extraction already
+   re-derived, which collapse into the same edge rather than
+   duplicating) onto the merged event.
+3. `backend.remove(a.id)`, `backend.remove(b.id)` -- removes the
+   original events. By this point every relationship they contributed
+   already points at `merged_event.id`, not at `a.id`/`b.id`, so
+   `remove()`'s existing `source_event_id`-matching prune (see
+   Execution order) does not touch them. Only `a`/`b`'s entries in
+   `_events` are removed.
+
+This order matters as much as the execution order at the
+`offline_consolidate()` level does, for the identical underlying
+reason: `remove()` prunes by `source_event_id`, so anything that
+needs to survive a `remove()` call must already point somewhere else
+*before* that call runs, not after.
+
+**Why `source_event_id` has to be reassigned, not just left alone.**
+Leaving it pointing at the now-deleted original event id would not
+just be stale bookkeeping -- it would break the field's actual
+contract and the parts of this spec that depend on it:
+
+- `Relationship`'s own docstring says `source_event_id` exists so
+  callers "can trace provenance ... at the relationship level" -- a
+  dangling reference to an event that no longer exists breaks that
+  for good, since `self._events.get(source_event_id)` returns `None`
+  forever after.
+- The Execution order section's entire argument for running
+  `strengthen_connections()` last rests on `remove()` correctly
+  pruning edges for removed events. An edge with a stale
+  `source_event_id` would never be pruned by any *future* `remove()`
+  call either (its `source_event_id` matches nothing live), so it
+  would sit in `_edges` as a permanent orphan, accumulating silently
+  across every subsequent consolidation pass.
+- After reassignment, the merged event *is* the current, correct
+  "specific memory event" this relationship should be attributed to
+  -- it's the surviving representation of that fact. Reassigning
+  `source_event_id` to it isn't a workaround, it's making the field
+  say something true.
 
 ## Mechanism 2: Compression / summarization
 
@@ -226,14 +321,32 @@ Runs strictly after `deduplicate()` (see Execution order) so
 compression never has to re-handle near-identical pairs dedup already
 resolved -- it only ever sees the already-deduplicated remainder.
 
-**Compress action**, for each group (size >= 2): `remove()` every
-source, `add()` one new summary event.
+**Compress action**, for each group (size >= 2): `add()` one new
+summary event, `remove()` every source.
 
 - `content` = `summarizer.summarize(group_events)`.
 - `salience` = `max(salience for event in group)`.
 - `last_reinforced` = `now`; `timestamp` = earliest in group -- same
   reasoning as merge.
 - `metadata["summarized_from"] = [event.id for event in group]`.
+
+**Same `GraphBackend` fix as merge, same reason -- if anything, a
+sharper case for it.** `summarizer.summarize()` produces LLM-
+synthesized text, which is *less* likely than merge's "pick one
+source's original text" to happen to mention every entity each
+individual source event extracted, especially once a group has 3+
+sources condensed into one paragraph. This is the identical failure
+mode Mechanism 1 has, not a new one, so it gets the identical fix:
+`reassign_relationships()` already takes `old_event_ids: list[str]`
+-- built for a pair, but a list works for a group of any size with no
+changes -- so `compress()`'s action for `GraphBackend` (or
+`HybridBackend` composed with one) is: `add(summary_event)` ->
+`graph_backend.reassign_relationships([e.id for e in group], summary_event.id)`
+-> `remove()` each source. Same collapse-duplicates-with-max()
+behavior, same "not strengthen_connections()'s job" boundary, same
+reasoning for why `source_event_id` must point at the summary event
+afterward, not any of the removed sources -- all as specified in
+Mechanism 1, reused here rather than restated.
 
 ## Mechanism 3: Connection strengthening
 
@@ -357,7 +470,9 @@ Mitigations for v1:
   `extraction/`'s existing structure and naming exactly):
   - `base.py`: `MemorySummarizer` ABC.
   - `llm_based.py`: `LLMSummarizer`, using the existing `llm` extra.
-- `backends/graph.py`: add `strength: float = 1.0` to `Relationship`.
+- `backends/graph.py`: add `strength: float = 1.0` to `Relationship`;
+  add `reassign_relationships(old_event_ids, new_event_id)` as a new
+  public method on `GraphBackend`.
 
 ## Testing
 
@@ -366,11 +481,29 @@ Mitigations for v1:
   unrelated fact below threshold. Explicit test that a single event
   never merges with itself (the self-matching exclusion is a named
   test case, not incidentally covered).
+- `deduplicate()` on `GraphBackend`: two events whose text differs
+  enough that each extracts at least one entity/relationship the
+  other doesn't (the exact scenario that silently lost information
+  before this fix) -- merge them, then assert every relationship
+  either original event contributed is still traversable from the
+  merged event via `related_to()`, and that `Relationship.source_event_id`
+  for each is the merged event's id, not either original's (a stale
+  reference would be the bug re-appearing in a different form). Also:
+  two events asserting the identical relationship (same source_id/
+  target_id/relation_type) collapse into one edge after merge, not
+  two, with `confidence`/`strength` equal to the max of the two
+  originals.
 - `compress()`: a fake `MemorySummarizer` test double for the default
   suite (matching how `LLMEntityExtractor`'s tests mock the anthropic
   client rather than calling it), plus one real-LLM live test gated
   on `ANTHROPIC_API_KEY` (matching `test_llm_extractor_live.py`'s
   existing skip-if-absent pattern exactly).
+- `compress()` on `GraphBackend`: a fake `MemorySummarizer` whose
+  `summarize()` returns text that deliberately omits an entity one of
+  the 3+ source events contributed (simulating exactly what a real LLM
+  summary would plausibly do) -- assert that entity's relationship is
+  still traversable from the summary event afterward, same shape of
+  assertion as the `deduplicate()` `GraphBackend` test above.
 - `strengthen_connections()`: `GraphBackend` directly, and a
   `HybridBackend` wrapping a `GraphBackend` as one of its two
   composed backends, to exercise `_find_graph_backend`'s reach-through
