@@ -255,3 +255,73 @@ def test_relationship_strength_defaults_to_one():
         source_id="user", target_id="peanut", relation_type="ALLERGIC_TO", source_event_id="evt1"
     )
     assert rel.strength == 1.0
+
+
+# --- reassign_relationships ---------------------------------------------------
+
+
+def test_reassign_relationships_retargets_source_event_id():
+    graph, events = make_graph_from_events([
+        {"edges": [("user", "peanut", "ALLERGIC_TO")]},
+    ])
+    merged_event = MemoryEvent(content={"entities": [], "edges": []})
+    graph.add(merged_event)
+
+    survivors = graph.reassign_relationships([events[0].id], merged_event.id)
+
+    assert len(survivors) == 1
+    assert survivors[0].source_event_id == merged_event.id
+    assert survivors[0].relation_type == "ALLERGIC_TO"
+
+
+def test_reassign_relationships_preserves_relationships_unique_to_each_source():
+    graph, events = make_graph_from_events([
+        {"edges": [("user", "peanut", "ALLERGIC_TO")]},
+        {"edges": [("user", "hiking", "ENJOYS")]},
+    ])
+    merged_event = MemoryEvent(content={"entities": [], "edges": []})
+    graph.add(merged_event)
+
+    survivors = graph.reassign_relationships([events[0].id, events[1].id], merged_event.id)
+
+    relation_types = {(r.target_id, r.relation_type) for r in survivors}
+    assert relation_types == {("peanut", "ALLERGIC_TO"), ("hiking", "ENJOYS")}
+    assert all(r.source_event_id == merged_event.id for r in survivors)
+    result = graph.related_to("user", max_hops=1)
+    assert {e.id for e in result} == {"peanut", "hiking"}
+
+
+def test_reassign_relationships_collapses_identical_relationships_keeping_max():
+    graph, events = make_graph_from_events([
+        {"edges": [("user", "peanut", "ALLERGIC_TO")]},
+        {"edges": [("user", "peanut", "ALLERGIC_TO")]},
+    ])
+    graph._edges[0].confidence = 0.6
+    graph._edges[0].strength = 0.4
+    graph._edges[1].confidence = 0.9
+    graph._edges[1].strength = 0.7
+    merged_event = MemoryEvent(content={"entities": [], "edges": []})
+    graph.add(merged_event)
+
+    survivors = graph.reassign_relationships([events[0].id, events[1].id], merged_event.id)
+
+    assert len(survivors) == 1
+    assert survivors[0].confidence == 0.9
+    assert survivors[0].strength == 0.7
+    assert survivors[0].source_event_id == merged_event.id
+
+
+def test_reassign_relationships_then_remove_does_not_delete_reassigned_edges():
+    graph, events = make_graph_from_events([
+        {"edges": [("user", "peanut", "ALLERGIC_TO")]},
+        {"edges": [("user", "hiking", "ENJOYS")]},
+    ])
+    merged_event = MemoryEvent(content={"entities": [], "edges": []})
+    graph.add(merged_event)
+    graph.reassign_relationships([events[0].id, events[1].id], merged_event.id)
+
+    graph.remove(events[0].id)
+    graph.remove(events[1].id)
+
+    result = graph.related_to("user", max_hops=1)
+    assert {e.id for e in result} == {"peanut", "hiking"}

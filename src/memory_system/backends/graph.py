@@ -155,6 +155,57 @@ class GraphBackend(MemoryBackend):
         self._events.pop(event_id, None)
         self._edges[:] = [e for e in self._edges if e.source_event_id != event_id]
 
+    def reassign_relationships(self, old_event_ids: list[str], new_event_id: str) -> list[Relationship]:
+        """Retargets every relationship whose source_event_id is in
+        old_event_ids to point at new_event_id instead, preserving the
+        relationships themselves rather than re-deriving them via
+        extraction from a single surviving content string, which would
+        silently drop anything only present in a discarded event's
+        original phrasing (see docs/superpowers/specs/
+        2026-08-06-offline-consolidation.md).
+
+        Relationships that become identical after reassignment (same
+        source_id, target_id, relation_type, now all pointing at
+        new_event_id) collapse into one, keeping max(confidence) and
+        max(strength) across the collapsed set. Mutates matching
+        Relationship objects in place (self._edges and self._adjacency
+        hold references to the same objects, so no separate adjacency
+        update is needed for survivors); removed duplicates are
+        filtered out of both by object identity, not value equality,
+        since dataclass equality could otherwise match the wrong
+        object when two relationships happen to share all field
+        values.
+
+        Returns the relationships now attached to new_event_id.
+        """
+        old_ids = set(old_event_ids)
+        affected = [rel for rel in self._edges if rel.source_event_id in old_ids]
+
+        groups: dict[tuple[str, str, str], list[Relationship]] = {}
+        for rel in affected:
+            key = (rel.source_id, rel.target_id, rel.relation_type)
+            groups.setdefault(key, []).append(rel)
+
+        redundant_object_ids: set[int] = set()
+        survivors: list[Relationship] = []
+        for group in groups.values():
+            survivor = group[0]
+            survivor.source_event_id = new_event_id
+            if len(group) > 1:
+                survivor.confidence = max(rel.confidence for rel in group)
+                survivor.strength = max(rel.strength for rel in group)
+                redundant_object_ids.update(id(rel) for rel in group[1:])
+            survivors.append(survivor)
+
+        if redundant_object_ids:
+            self._edges[:] = [rel for rel in self._edges if id(rel) not in redundant_object_ids]
+            for entity_id in self._adjacency:
+                self._adjacency[entity_id] = [
+                    rel for rel in self._adjacency[entity_id] if id(rel) not in redundant_object_ids
+                ]
+
+        return survivors
+
     # --- graph-native methods, the actual point of this backend -------
 
     def related_to(
