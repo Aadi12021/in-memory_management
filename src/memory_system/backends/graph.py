@@ -164,6 +164,12 @@ class GraphBackend(MemoryBackend):
         original phrasing (see docs/superpowers/specs/
         2026-08-06-offline-consolidation.md).
 
+        Also folds in any pre-existing relationships already attached to
+        new_event_id into the same collapsing pass, so that if add()
+        extraction re-creates a matching relationship on new_event_id
+        before this call, it participates in max()-collapsing rather than
+        creating a duplicate.
+
         Relationships that become identical after reassignment (same
         source_id, target_id, relation_type, now all pointing at
         new_event_id) collapse into one, keeping max(confidence) and
@@ -179,7 +185,10 @@ class GraphBackend(MemoryBackend):
         Returns the relationships now attached to new_event_id.
         """
         old_ids = set(old_event_ids)
-        affected = [rel for rel in self._edges if rel.source_event_id in old_ids]
+        affected = [
+            rel for rel in self._edges
+            if rel.source_event_id in old_ids or rel.source_event_id == new_event_id
+        ]
 
         groups: dict[tuple[str, str, str], list[Relationship]] = {}
         for rel in affected:

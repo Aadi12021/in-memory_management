@@ -325,3 +325,42 @@ def test_reassign_relationships_then_remove_does_not_delete_reassigned_edges():
 
     result = graph.related_to("user", max_hops=1)
     assert {e.id for e in result} == {"peanut", "hiking"}
+
+
+def test_reassign_relationships_collapses_with_pre_existing_on_new_event():
+    """Bug fix: reassign_relationships must fold in pre-existing relationships
+    already attached to new_event_id (e.g., from add() extraction) into the
+    same collapsing pass, not create duplicates.
+
+    Real scenario: add(merged_event) runs extraction which creates a fresh
+    relationship on merged_event.id with one confidence/strength, then
+    reassign_relationships() retargets an old relationship with different
+    confidence/strength -- they should collapse into one with max values.
+    """
+    # Create old event with a relationship
+    graph, events = make_graph_from_events([
+        {"edges": [("user", "peanut", "ALLERGIC_TO")]},
+    ])
+    graph._edges[0].confidence = 0.6
+    graph._edges[0].strength = 0.4
+    old_event_id = events[0].id
+
+    # Create merged event whose extraction ALSO creates the same relationship
+    merged_event = MemoryEvent(content={"edges": [("user", "peanut", "ALLERGIC_TO")]})
+    graph.add(merged_event)
+    # Extraction created a fresh relationship on merged_event with default confidence/strength
+    graph._edges[-1].confidence = 0.8
+    graph._edges[-1].strength = 0.6
+
+    # Now reassign the old event's relationship to the merged event
+    survivors = graph.reassign_relationships([old_event_id], merged_event.id)
+
+    # Should have exactly ONE relationship for (user -> peanut ALLERGIC_TO)
+    # with max confidence/strength from both sources
+    matching_rels = [r for r in graph._edges
+                     if r.source_id == "user" and r.target_id == "peanut"
+                     and r.relation_type == "ALLERGIC_TO"
+                     and r.source_event_id == merged_event.id]
+    assert len(matching_rels) == 1
+    assert matching_rels[0].confidence == 0.8  # max(0.6, 0.8)
+    assert matching_rels[0].strength == 0.6    # max(0.4, 0.6)
