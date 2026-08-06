@@ -12,6 +12,35 @@ from .policies.decay import DecayPolicy
 from .policies.salience import SalienceScorer
 
 
+def _find_similar_pairs(
+    backend: MemoryBackend, tier: MemoryTier, threshold: float
+) -> list[tuple[MemoryEvent, MemoryEvent, float]]:
+    """Finds pairs of events in `tier` whose similarity (via the
+    backend's own query()) is at or above `threshold`. Excludes
+    self-matches explicitly: every backend's query() will return the
+    querying event's own content back to itself, usually at rank 1
+    with a near-perfect score, since none of them exclude the query
+    source. Without this check, every event would trivially "match
+    itself" above any threshold.
+    """
+    candidates = backend.get_all(tier=tier)
+    seen_pairs: set[frozenset[str]] = set()
+    pairs: list[tuple[MemoryEvent, MemoryEvent, float]] = []
+    for event in candidates:
+        results = backend.query(str(event.content), top_k=len(candidates), tier=tier)
+        for result in results:
+            if result.event.id == event.id:
+                continue
+            if result.score < threshold:
+                continue
+            pair_key = frozenset({event.id, result.event.id})
+            if pair_key in seen_pairs:
+                continue
+            seen_pairs.add(pair_key)
+            pairs.append((event, result.event, result.score))
+    return pairs
+
+
 class TieredMemory:
     """Composes a backend with consolidation/decay/salience policies.
 
