@@ -235,6 +235,16 @@ def test_deduplicate_on_graph_backend_preserves_entities_unique_to_each_source()
     # content didn't survive.
     result = graph.related_to("user", max_hops=1)
     assert {e.id for e in result} == {"peanut", "hiking"}
+    # related_to() alone is NOT sufficient to catch reassign_relationships()
+    # being broken: GraphBackend.remove() prunes self._edges by
+    # source_event_id but never prunes self._adjacency, so a stale
+    # adjacency entry left behind by a discarded event would still make
+    # related_to() traverse to "hiking" even if reassign_relationships()
+    # did nothing at all. Assert directly that the surviving relationship
+    # is actually attached to the merged event, not a discarded original --
+    # entities_for_event() is driven by self._edges (source_event_id), not
+    # the adjacency index, so it can't be fooled by a stale entry.
+    assert graph.entities_for_event(merged_id) == {"user", "peanut", "hiking"}
     remaining = memory.backend.get_all(tier=MemoryTier.LONG_TERM)
     assert len(remaining) == 1
     assert remaining[0].id == merged_id
@@ -345,8 +355,21 @@ def test_compress_on_graph_backend_preserves_entities_the_summary_omits():
     report = memory.compress(threshold=1.0, summarizer=summarizer)
 
     assert len(report.compressed) == 1
+    new_id = report.compressed[0][1]
     result = graph.related_to("user", max_hops=1)
     assert {e.id for e in result} == {"peanut", "hiking", "quinoa"}
+    # related_to() alone can't tell a genuinely-preserved relationship
+    # apart from a stale self._adjacency entry left behind by
+    # GraphBackend.remove() (which prunes self._edges by source_event_id
+    # but never touches self._adjacency) -- see the analogous dedup test
+    # above. Confirm directly, via entities_for_event() (driven by
+    # self._edges, not adjacency), that every relationship is actually
+    # attached to the summary event, not a discarded original. The
+    # summary's own content is a plain string ("User has a peanut
+    # allergy."), which ScriptedExtractor doesn't parse into any edges at
+    # all, so every entity here can only have arrived via
+    # reassign_relationships().
+    assert graph.entities_for_event(new_id) == {"user", "peanut", "hiking", "quinoa"}
 
 
 def test_strengthen_connections_bumps_edge_between_entities_co_associated_by_merge():
@@ -406,6 +429,77 @@ def test_strengthen_connections_skips_edges_sourced_from_the_consolidation_event
     report = memory.strengthen_connections(merge_report=merge_report)
 
     assert report.strengthened == []
+
+
+def test_strengthen_connections_strengthens_bystander_edge_even_when_a_consolidation_sourced_edge_exists_for_the_same_pair():
+    """find_edge() (used internally before this fix) only returns the
+    FIRST matching relationship for a pair, ignoring relation_type --
+    but the graph model permits parallel typed edges between the same
+    two entities (reassign_relationships() groups by (source_id,
+    target_id, relation_type), so two different relation types both
+    survive). If a pair has BOTH a consolidation-sourced edge and a
+    genuine pre-existing bystander edge, strengthen_connections() must
+    not let an arbitrary single-edge lookup decide the outcome -- it
+    must check every relationship between the pair (find_edges()) and
+    strengthen the bystander regardless of which one happens to come
+    first in GraphBackend._edges.
+
+    a's own content directly relates peanut and protein
+    (INGREDIENT_OF); since a has the higher salience, its content (and
+    that edge) survives the merge, so INGREDIENT_OF ends up sourced
+    from the merged event -- a bona fide "part of this consolidation"
+    edge. The CONTAINS edge from `unrelated` is added AFTER a and b, so
+    it lands later in GraphBackend._edges than INGREDIENT_OF -- the
+    exact ordering that made the old find_edge()-only implementation
+    return the consolidation-sourced edge first, see it skipped by the
+    self-source guard, and never even look at the bystander.
+    """
+    graph = GraphBackend(extractor=ScriptedExtractor())
+    memory = TieredMemory(backend=graph, consolidation_policy=AlwaysConsolidate(), decay_policy=NoDecay())
+
+    a = MemoryEvent(
+        content={
+            "entities": [],
+            "edges": [("user", "peanut", "ALLERGIC_TO"), ("peanut", "protein", "INGREDIENT_OF")],
+        },
+        tier=MemoryTier.LONG_TERM, salience=0.9,
+    )
+    b = MemoryEvent(
+        content={"entities": [], "edges": [("user", "protein", "ALLERGIC_TO")]},
+        tier=MemoryTier.LONG_TERM, salience=0.1,
+    )
+    memory.backend.add(a)
+    memory.backend.add(b)
+
+    # genuine, unrelated bystander fact -- added after a/b so it lands
+    # later in _edges than the surviving INGREDIENT_OF edge
+    unrelated = MemoryEvent(content={"entities": [], "edges": [("peanut", "protein", "CONTAINS")]})
+    graph.add(unrelated)
+    for edge in graph.find_edges("peanut", "protein"):
+        if edge.relation_type == "CONTAINS":
+            edge.strength = 0.5
+
+    merge_report = memory.deduplicate(threshold=1.0)
+    assert len(merge_report.merged) == 1
+    merged_id = merge_report.merged[0][2]
+
+    # Sanity check on the premise: both a consolidation-sourced edge AND
+    # a bystander edge now connect (peanut, protein).
+    edges = graph.find_edges("peanut", "protein")
+    assert len(edges) == 2
+    consolidation_edge = next(e for e in edges if e.relation_type == "INGREDIENT_OF")
+    bystander_edge = next(e for e in edges if e.relation_type == "CONTAINS")
+    assert consolidation_edge.source_event_id == merged_id
+    assert bystander_edge.source_event_id == unrelated.id
+
+    report = memory.strengthen_connections(merge_report=merge_report)
+
+    # the bystander gets strengthened...
+    assert bystander_edge.strength == 0.6
+    # ...but the consolidation's own new edge is untouched, per the
+    # skip-self-sourced-edges contract.
+    assert consolidation_edge.strength == 1.0
+    assert {frozenset(pair) for pair in report.strengthened} == {frozenset({"peanut", "protein"})}
 
 
 def test_strengthen_connections_caps_at_one():
@@ -630,6 +724,71 @@ def test_offline_consolidate_dry_run_propagates_to_compress_and_strengthen():
     # deduplicate() never mutates the backend.
     remaining_ids = {e.id for e in graph.get_all(tier=MemoryTier.LONG_TERM)}
     assert remaining_ids == {a.id, b.id}
+
+
+def test_offline_consolidate_end_to_end_on_hybrid_backend_reaches_through_to_graph_backend():
+    """Every other GraphBackend-flavored test in this module exercises
+    TieredMemory against a bare GraphBackend. _find_graph_backend()'s
+    reach-through path for a GraphBackend nested inside a HybridBackend
+    is otherwise only unit-tested at the helper-function level
+    (test_find_graph_backend_finds_it_inside_hybrid_backend) -- nothing
+    builds a real TieredMemory over a HybridBackend and runs
+    offline_consolidate() end-to-end to prove the whole pipeline
+    actually reaches the nested GraphBackend, not just the helper.
+
+    HybridBackend mirrors every write to both of its backends
+    (InMemoryBackend here, matching how it's constructed elsewhere in
+    the suite -- see tests/test_hybrid_backend.py) and fuses query()
+    results via Reciprocal Rank Fusion, so `threshold` is on a very
+    different scale (~0.03, not ~1.0 the way GraphBackend's raw
+    entity-overlap score is) -- verified empirically: a and b's
+    RRF-fused score here is 1/31 + 1/32 ~= 0.0323, so 0.03 finds it.
+    """
+    lexical = InMemoryBackend()
+    graph = GraphBackend(extractor=ScriptedExtractor())
+    hybrid = HybridBackend(lexical_backend=lexical, semantic_backend=graph)
+    memory = TieredMemory(backend=hybrid, consolidation_policy=AlwaysConsolidate(), decay_policy=NoDecay())
+
+    # a genuine, unrelated bystander graph fact, pre-dating the merge
+    unrelated = MemoryEvent(content={"entities": [], "edges": [("peanut", "protein", "CONTAINS")]})
+    memory.backend.add(unrelated)
+    graph.find_edge("peanut", "protein").strength = 0.5
+
+    # two long-term events that will dedup-merge, co-associating
+    # "peanut" and "protein" with the same surviving event -- and each
+    # contributing a relationship (the "protein" one) the other doesn't
+    # mention, so preservation via reassign_relationships matters too
+    a = MemoryEvent(
+        content={"entities": [], "edges": [("user", "peanut", "ALLERGIC_TO")]},
+        tier=MemoryTier.LONG_TERM, salience=0.9,
+    )
+    b = MemoryEvent(
+        content={"entities": [], "edges": [("user", "protein", "ALLERGIC_TO")]},
+        tier=MemoryTier.LONG_TERM, salience=0.2,
+    )
+    memory.backend.add(a)
+    memory.backend.add(b)
+
+    report = memory.offline_consolidate(merge_threshold=0.03, group_threshold=0.03)
+
+    # dedup ran through the HybridBackend and reassigned relationships
+    # on the nested GraphBackend
+    assert len(report.merged) == 1
+    merged_id = report.merged[0][2]
+    assert graph.entities_for_event(merged_id) == {"user", "peanut", "protein"}
+
+    # strengthen_connections() reached the nested GraphBackend and
+    # bumped the pre-existing bystander edge -- not the merge's own
+    # (there is no direct peanut-protein edge from the merge itself
+    # here, only the CONTAINS bystander, so this also confirms the
+    # bystander, not a phantom, was what got strengthened)
+    assert report.strengthened == [("peanut", "protein")]
+    assert graph.find_edge("peanut", "protein").strength == 0.6
+
+    # the merge actually happened on both halves of the HybridBackend
+    remaining = memory.backend.get_all(tier=MemoryTier.LONG_TERM)
+    assert len(remaining) == 1
+    assert remaining[0].id == merged_id
 
 
 def test_offline_consolidate_order_prevents_strengthening_edges_about_to_be_removed():

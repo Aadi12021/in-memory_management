@@ -392,3 +392,33 @@ def test_find_edge_returns_relationship_in_either_direction():
 def test_find_edge_returns_none_when_no_edge_exists():
     graph = make_graph(edges=[("user", "peanut", "ALLERGIC_TO")], entities=["hiking"])
     assert graph.find_edge("user", "hiking") is None
+
+
+def test_find_edges_returns_all_parallel_relationships_between_a_pair():
+    # the graph model permits parallel typed edges between the same two
+    # entities -- reassign_relationships() groups by (source_id,
+    # target_id, relation_type), so two different relation types both
+    # survive between the same pair. find_edges() must surface both,
+    # unlike find_edge() which only returns one of them.
+    graph, events = make_graph_from_events([
+        {"edges": [("peanut", "protein", "CONTAINS")]},
+        {"edges": [("peanut", "protein", "INGREDIENT_OF")]},
+    ])
+    edges = graph.find_edges("peanut", "protein")
+    assert len(edges) == 2
+    assert {e.relation_type for e in edges} == {"CONTAINS", "INGREDIENT_OF"}
+    # either direction still finds both
+    assert len(graph.find_edges("protein", "peanut")) == 2
+
+
+def test_find_edges_returns_empty_list_when_no_edge_exists():
+    graph = make_graph(edges=[("user", "peanut", "ALLERGIC_TO")], entities=["hiking"])
+    assert graph.find_edges("user", "hiking") == []
+
+
+def test_find_edge_is_a_thin_wrapper_over_find_edges():
+    graph, events = make_graph_from_events([
+        {"edges": [("peanut", "protein", "CONTAINS")]},
+        {"edges": [("peanut", "protein", "INGREDIENT_OF")]},
+    ])
+    assert graph.find_edge("peanut", "protein") in graph.find_edges("peanut", "protein")

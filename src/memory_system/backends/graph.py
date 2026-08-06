@@ -225,13 +225,26 @@ class GraphBackend(MemoryBackend):
             for eid in (rel.source_id, rel.target_id)
         }
 
+    def find_edges(self, entity_a: str, entity_b: str) -> list[Relationship]:
+        """All relationships connecting these two entities, in either
+        direction. The graph model permits parallel typed edges between
+        the same pair of entities -- reassign_relationships() groups by
+        (source_id, target_id, relation_type), so two relationships with
+        different relation_type both survive between the same pair --
+        so callers that need to consider every relationship for a pair,
+        not just one, must use this rather than find_edge()."""
+        return [
+            rel for rel in self._edges
+            if {rel.source_id, rel.target_id} == {entity_a, entity_b}
+        ]
+
     def find_edge(self, entity_a: str, entity_b: str) -> Optional[Relationship]:
         """The relationship connecting these two entities, in either
-        direction, or None if none exists."""
-        for rel in self._edges:
-            if {rel.source_id, rel.target_id} == {entity_a, entity_b}:
-                return rel
-        return None
+        direction, or None if none exists. When more than one
+        relationship connects the same pair (different relation_types),
+        returns an arbitrary one of them -- use find_edges() when that
+        matters."""
+        return next(iter(self.find_edges(entity_a, entity_b)), None)
 
     # --- graph-native methods, the actual point of this backend -------
 

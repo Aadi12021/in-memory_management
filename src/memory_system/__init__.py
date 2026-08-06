@@ -1,6 +1,6 @@
 from .backends import InMemoryBackend, MemoryBackend
 from .core import TieredMemory
-from .events import MemoryEvent, MemoryTier, RetrievalResult
+from .events import ConsolidationReport, MemoryEvent, MemoryTier, RetrievalResult
 from .policies import (
     AlwaysConsolidate,
     ConsolidationPolicy,
@@ -21,6 +21,7 @@ __all__ = [
     "MemoryEvent",
     "MemoryTier",
     "RetrievalResult",
+    "ConsolidationReport",
     "MemoryBackend",
     "InMemoryBackend",
     "ConsolidationPolicy",

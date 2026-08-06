@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timezone
 from typing import Any, Optional
 
@@ -13,6 +14,8 @@ from .events import ConsolidationReport, MemoryEvent, MemoryTier, RetrievalResul
 from .policies.consolidation import ConsolidationPolicy
 from .policies.decay import DecayPolicy
 from .policies.salience import SalienceScorer
+
+logger = logging.getLogger(__name__)
 
 
 def _find_similar_pairs(
@@ -217,7 +220,15 @@ class TieredMemory:
                 except Exception:
                     # fail soft: a broken/unavailable LLM call shouldn't
                     # abort the whole pass, it should just mean this
-                    # group is skipped
+                    # group is skipped -- but log it, so a real failure
+                    # is visible instead of indistinguishable from "no
+                    # group was ever eligible here."
+                    logger.warning(
+                        "compress(): summarizer.summarize() failed for group %s, "
+                        "skipping this group",
+                        [e.id for e in group_events],
+                        exc_info=True,
+                    )
                     continue
                 summary_event = MemoryEvent(
                     content=summary_text,
@@ -246,12 +257,31 @@ class TieredMemory:
         compress_report: Optional[ConsolidationReport] = None,
         dry_run: bool = False,
     ) -> ConsolidationReport:
-        """Strengthens graph connections between entities that ended
-        up associated with the same surviving event after this pass's
-        deduplicate()/compress() calls. Pass the ConsolidationReports
-        those methods returned (from the same pass); called with no
-        reports (the default), there is nothing to strengthen and an
-        empty ConsolidationReport is returned.
+        """Strengthens PRE-EXISTING "bystander" graph edges between
+        entities that a deduplicate()/compress() pass just associated
+        with the same surviving event -- NOT the connections that pass
+        itself created.
+
+        Concretely: for every merged/summary event id in the given
+        reports, this looks at all entities touched by that event
+        (`entities_for_event`) and, for every pair of them that has an
+        existing relationship (`find_edges`), bumps that relationship's
+        `strength` by 0.1 (capped at 1.0) -- UNLESS that relationship's
+        `source_event_id` is the merge/summary event itself, in which
+        case it is explicitly skipped. So if this pass is what created
+        or reassigned the (entity_a, entity_b) edge in the first place,
+        that edge's own strength/confidence is left alone here (it was
+        already handled by reassign_relationships()'s max()-collapsing
+        during the same pass); only an independently pre-existing edge
+        between the two entities -- one whose source_event_id points at
+        some other, unrelated event -- gets strengthened. A caller
+        reading only this docstring should not expect the pass's own
+        new connections to come out of it strengthened; they won't.
+
+        Pass the ConsolidationReports deduplicate()/compress() returned
+        (from the same pass); called with no reports (the default),
+        there is nothing to strengthen and an empty ConsolidationReport
+        is returned.
 
         Only meaningful for GraphBackend (or a HybridBackend composed
         with one) -- returns an empty ConsolidationReport immediately
@@ -273,17 +303,22 @@ class TieredMemory:
             entities = sorted(graph_backend.entities_for_event(event_id))
             for i, entity_a in enumerate(entities):
                 for entity_b in entities[i + 1:]:
-                    edge = graph_backend.find_edge(entity_a, entity_b)
-                    if edge is None:
-                        continue
-                    # Only strengthen edges that are NOT part of this consolidation event itself
-                    # (those edges' confidence/strength are already handled by the merge/compress).
-                    # Strengthen only "external" edges that happen to connect co-mentioned entities.
-                    if edge.source_event_id == event_id:
-                        continue
-                    if not dry_run:
-                        edge.strength = min(1.0, edge.strength + 0.1)
-                    report.strengthened.append((entity_a, entity_b))
+                    # A pair of entities can have more than one
+                    # relationship between them (different relation
+                    # types), and find_edge() would arbitrarily return
+                    # just one -- iterate all of them so a genuine
+                    # bystander edge isn't skipped just because a
+                    # consolidation-sourced edge for the same pair
+                    # happens to come first.
+                    for edge in graph_backend.find_edges(entity_a, entity_b):
+                        # Only strengthen edges that are NOT part of this consolidation event itself
+                        # (those edges' confidence/strength are already handled by the merge/compress).
+                        # Strengthen only "external" edges that happen to connect co-mentioned entities.
+                        if edge.source_event_id == event_id:
+                            continue
+                        if not dry_run:
+                            edge.strength = min(1.0, edge.strength + 0.1)
+                        report.strengthened.append((entity_a, entity_b))
 
         return report
 
