@@ -474,13 +474,102 @@ def test_offline_consolidate_runs_dedup_then_compress():
 
 
 def test_offline_consolidate_skips_compress_when_no_summarizer_given():
+    """Regression note: the original version of this test used a
+    single similar pair with merge_threshold == group_threshold, so
+    deduplicate() already merged the only two similar events, leaving
+    nothing for compress() to group -- report.compressed == [] held
+    regardless of whether the `if summarizer is not None` guard in
+    offline_consolidate() existed at all. A version of the wrapper
+    that always called compress() (dropping the guard) would have
+    passed that test unchanged (verified empirically by calling
+    memory.compress(0.3, None, dry_run=False) directly on the
+    post-dedup backend state and getting compressed: [] either way).
+
+    This version fixes the "nothing left to compress" half of the gap
+    by using a merge_threshold (0.8) stricter than the pair's actual
+    similarity (~0.75, verified empirically), so deduplicate() does
+    NOT merge it and the pair survives untouched with group_threshold
+    (0.3) loose enough that compress() would group it if it ran.
+
+    But that alone still isn't discriminating in non-dry_run mode:
+    compress()'s `except Exception: continue` around
+    `summarizer.summarize(group_events)` is fail-soft by design, so
+    even a guardless offline_consolidate() calling
+    compress(group_threshold, None, dry_run=False) would hit
+    `None.summarize(...)`, swallow the resulting AttributeError, and
+    still return compressed == [] -- verified empirically by patching
+    the guard out and rerunning this exact scenario. Non-dry_run mode
+    genuinely cannot tell "guard skipped compress" apart from "compress
+    ran, summarizer blew up, group was skipped".
+
+    dry_run=True is what actually discriminates: with dry_run, compress()
+    skips the `summarizer.summarize()` call entirely (it's inside the
+    `if not dry_run` block) and unconditionally records each found group
+    in report.compressed with new_id=None. So a guardless wrapper calling
+    compress(group_threshold, None, dry_run=True) would return a
+    *non-empty* report.compressed for this same pair (verified
+    empirically), while the guarded wrapper never calls compress() at
+    all and returns compressed == []. That's the assertion that would
+    actually fail if the guard were removed.
+    """
     memory = make_long_term_memory()
-    add_long_term(memory, "User is severely allergic to peanuts.")
-    add_long_term(memory, "User is severely allergic to peanuts and tree nuts.")
+    a = add_long_term(memory, "User is severely allergic to peanuts.")
+    b = add_long_term(memory, "User is severely allergic to peanuts and tree nuts.")
 
-    report = memory.offline_consolidate(merge_threshold=0.3, group_threshold=0.3)
+    report = memory.offline_consolidate(merge_threshold=0.8, group_threshold=0.3)
 
+    assert report.merged == []
     assert report.compressed == []
+    remaining = memory.backend.get_all(tier=MemoryTier.LONG_TERM)
+    assert len(remaining) == 2
+
+    # Prove the premise: compress() really would have grouped this
+    # pair had the guard not skipped it -- i.e. compressed == [] above
+    # reflects the guard, not an empty tier.
+    would_be_report = memory.compress(0.3, FakeSummarizer(), dry_run=True)
+    assert len(would_be_report.compressed) == 1
+    assert set(would_be_report.compressed[0][0]) == {a.id, b.id}
+
+    # The actually-discriminating check: under dry_run, compress()
+    # records a group without ever touching the summarizer, so a
+    # guardless wrapper would populate report.compressed here even
+    # with summarizer=None. Only the guard keeps this empty.
+    dry_report = memory.offline_consolidate(merge_threshold=0.8, group_threshold=0.3, dry_run=True)
+    assert dry_report.compressed == []
+
+
+def test_offline_consolidate_calls_compress_when_summarizer_given():
+    """No other Task 8 test ever calls offline_consolidate() with a
+    real summarizer, so the `self.compress(group_threshold, summarizer,
+    dry_run=dry_run)` call itself -- its argument wiring, and its
+    running at all -- was never exercised through the wrapper.
+
+    Four events, two topics. merge_threshold=0.77 sits between the two
+    pairs' actual similarity scores (hiking ~0.79, allergy ~0.75, both
+    verified empirically): deduplicate() merges the hiking pair but
+    leaves the allergy pair untouched. group_threshold=0.3 then lets
+    compress() group and summarize the surviving allergy pair through
+    the wrapper. Asserting FakeSummarizer.calls is non-empty proves
+    offline_consolidate() actually invoked compress() (and thus the
+    summarizer), not merely that no error occurred.
+    """
+    memory = make_long_term_memory()
+    a1 = add_long_term(memory, "User is severely allergic to peanuts.")
+    a2 = add_long_term(memory, "User is severely allergic to peanuts and tree nuts.")
+    add_long_term(memory, "User enjoys hiking on weekends.")
+    add_long_term(memory, "User enjoys hiking and camping on weekends.")
+    summarizer = FakeSummarizer("User has peanut and tree nut allergies.")
+
+    report = memory.offline_consolidate(
+        merge_threshold=0.77, group_threshold=0.3, summarizer=summarizer
+    )
+
+    assert len(report.merged) == 1  # the hiking pair, merged by dedup
+    assert len(report.compressed) == 1  # the allergy pair, compressed
+    assert set(report.compressed[0][0]) == {a1.id, a2.id}
+    assert len(summarizer.calls) == 1  # wrapper really invoked compress()
+    remaining = memory.backend.get_all(tier=MemoryTier.LONG_TERM)
+    assert len(remaining) == 2  # hiking survivor + allergy summary
 
 
 def test_offline_consolidate_dry_run_mutates_nothing():
@@ -493,6 +582,53 @@ def test_offline_consolidate_dry_run_mutates_nothing():
     assert len(report.merged) == 1
     assert report.merged[0][2] is None
     remaining_ids = {e.id for e in memory.backend.get_all(tier=MemoryTier.LONG_TERM)}
+    assert remaining_ids == {a.id, b.id}
+
+
+def test_offline_consolidate_dry_run_propagates_to_compress_and_strengthen():
+    """The dry_run test above only ever exercises dedup: it uses
+    InMemoryBackend with no summarizer, so strengthen_connections()
+    short-circuits to empty immediately (non-graph backend) and
+    compress() is never called at all (no summarizer) -- neither
+    stage's dry_run handling is checked through the wrapper.
+
+    This test uses a GraphBackend (so strengthen_connections() has a
+    pre-existing bystander edge it could touch) and a FakeSummarizer
+    (so compress() has a real group it could summarize), then calls
+    offline_consolidate(..., dry_run=True) and checks all three
+    stages left everything untouched: the summarizer was never
+    invoked, the bystander edge's strength is unchanged, and the two
+    long-term events are still present under their original ids.
+    """
+    graph = GraphBackend(extractor=ScriptedExtractor())
+    memory = TieredMemory(backend=graph, consolidation_policy=AlwaysConsolidate(), decay_policy=NoDecay())
+    unrelated = MemoryEvent(content={"entities": [], "edges": [("peanut", "protein", "CONTAINS")]})
+    graph.add(unrelated)
+    graph.find_edge("peanut", "protein").strength = 0.5
+    a = MemoryEvent(content={"entities": [], "edges": [("user", "peanut", "ALLERGIC_TO")]}, tier=MemoryTier.LONG_TERM)
+    b = MemoryEvent(content={"entities": [], "edges": [("user", "protein", "ALLERGIC_TO")]}, tier=MemoryTier.LONG_TERM)
+    memory.backend.add(a)
+    memory.backend.add(b)
+    summarizer = FakeSummarizer()
+
+    report = memory.offline_consolidate(
+        merge_threshold=1.0, group_threshold=1.0, summarizer=summarizer, dry_run=True
+    )
+
+    # Sanity check on the premise: there really was a mergeable pair
+    # and a compressible group here, so the assertions below reflect
+    # dry_run suppressing real work, not an absence of work.
+    assert len(report.merged) == 1
+    assert report.merged[0][2] is None
+    assert len(report.compressed) == 1
+    assert report.compressed[0][1] is None
+
+    # compress()'s summarizer is never invoked under dry_run.
+    assert summarizer.calls == []
+    # strengthen_connections() never mutates the bystander edge.
+    assert graph.find_edge("peanut", "protein").strength == 0.5
+    # deduplicate() never mutates the backend.
+    remaining_ids = {e.id for e in graph.get_all(tier=MemoryTier.LONG_TERM)}
     assert remaining_ids == {a.id, b.id}
 
 
