@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
+
+from memory_system import AlwaysConsolidate, NoDecay, TieredMemory
 from memory_system.backends.memory import InMemoryBackend
 from memory_system.core import _find_similar_pairs
 from memory_system.events import MemoryEvent, MemoryTier
@@ -59,3 +62,121 @@ def test_deduplicates_symmetric_pair_reporting():
 
     # (a, b) and (b, a) are the same pair -- must be reported once, not twice
     assert len(pairs) == 1
+
+
+def make_long_term_memory():
+    return TieredMemory(
+        backend=InMemoryBackend(),
+        consolidation_policy=AlwaysConsolidate(),
+        decay_policy=NoDecay(),
+    )
+
+
+def add_long_term(memory, content, salience=0.5, timestamp=None, metadata=None):
+    event = MemoryEvent(
+        content=content,
+        tier=MemoryTier.LONG_TERM,
+        salience=salience,
+        metadata=metadata or {},
+    )
+    if timestamp is not None:
+        event.timestamp = timestamp
+    memory.backend.add(event)
+    return event
+
+
+def test_deduplicate_merges_near_identical_pair():
+    memory = make_long_term_memory()
+    a = add_long_term(memory, "User is severely allergic to peanuts.")
+    b = add_long_term(memory, "User is severely allergic to peanuts and tree nuts.")
+
+    report = memory.deduplicate(threshold=0.3)
+
+    assert len(report.merged) == 1
+    assert set(report.merged[0][:2]) == {a.id, b.id}
+    remaining = memory.backend.get_all(tier=MemoryTier.LONG_TERM)
+    assert len(remaining) == 1
+    assert remaining[0].id == report.merged[0][2]
+
+
+def test_deduplicate_keeps_higher_salience_content():
+    memory = make_long_term_memory()
+    a = add_long_term(memory, "User is severely allergic to peanuts.", salience=0.9)
+    add_long_term(memory, "User is severely allergic to peanuts and tree nuts.", salience=0.2)
+
+    memory.deduplicate(threshold=0.3)
+
+    remaining = memory.backend.get_all(tier=MemoryTier.LONG_TERM)
+    assert remaining[0].content == a.content
+
+
+def test_deduplicate_salience_is_max_of_both():
+    memory = make_long_term_memory()
+    add_long_term(memory, "User is severely allergic to peanuts.", salience=0.3)
+    add_long_term(memory, "User is severely allergic to peanuts and tree nuts.", salience=0.9)
+
+    memory.deduplicate(threshold=0.3)
+
+    remaining = memory.backend.get_all(tier=MemoryTier.LONG_TERM)
+    assert remaining[0].salience == 0.9
+
+
+def test_deduplicate_timestamp_is_earliest_source():
+    memory = make_long_term_memory()
+    early = datetime(2020, 1, 1, tzinfo=timezone.utc)
+    late = datetime(2024, 1, 1, tzinfo=timezone.utc)
+    add_long_term(memory, "User is severely allergic to peanuts.", timestamp=late)
+    add_long_term(memory, "User is severely allergic to peanuts and tree nuts.", timestamp=early)
+
+    memory.deduplicate(threshold=0.3)
+
+    remaining = memory.backend.get_all(tier=MemoryTier.LONG_TERM)
+    assert remaining[0].timestamp == early
+
+
+def test_deduplicate_last_reinforced_is_set_to_now():
+    memory = make_long_term_memory()
+    add_long_term(memory, "User is severely allergic to peanuts.")
+    add_long_term(memory, "User is severely allergic to peanuts and tree nuts.")
+    before = datetime.now(timezone.utc)
+
+    memory.deduplicate(threshold=0.3)
+
+    remaining = memory.backend.get_all(tier=MemoryTier.LONG_TERM)
+    assert remaining[0].last_reinforced >= before
+
+
+def test_deduplicate_records_merged_from_provenance():
+    memory = make_long_term_memory()
+    a = add_long_term(memory, "User is severely allergic to peanuts.")
+    b = add_long_term(memory, "User is severely allergic to peanuts and tree nuts.")
+
+    memory.deduplicate(threshold=0.3)
+
+    remaining = memory.backend.get_all(tier=MemoryTier.LONG_TERM)
+    assert set(remaining[0].metadata["merged_from"]) == {a.id, b.id}
+
+
+def test_deduplicate_leaves_unrelated_events_untouched():
+    memory = make_long_term_memory()
+    add_long_term(memory, "User is severely allergic to peanuts.")
+    add_long_term(memory, "The weather forecast for tomorrow is sunny.")
+
+    report = memory.deduplicate(threshold=0.5)
+
+    assert report.merged == []
+    assert len(memory.backend.get_all(tier=MemoryTier.LONG_TERM)) == 2
+
+
+def test_deduplicate_dry_run_does_not_mutate_backend():
+    memory = make_long_term_memory()
+    a = add_long_term(memory, "User is severely allergic to peanuts.")
+    b = add_long_term(memory, "User is severely allergic to peanuts and tree nuts.")
+
+    report = memory.deduplicate(threshold=0.3, dry_run=True)
+
+    assert len(report.merged) == 1
+    assert set(report.merged[0][:2]) == {a.id, b.id}
+    assert report.merged[0][2] is None
+    remaining_ids = {e.id for e in memory.backend.get_all(tier=MemoryTier.LONG_TERM)}
+    assert remaining_ids == {a.id, b.id}

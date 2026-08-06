@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from typing import Any, Optional
 
 from .backends.base import MemoryBackend
-from .events import MemoryEvent, MemoryTier, RetrievalResult
+from .events import ConsolidationReport, MemoryEvent, MemoryTier, RetrievalResult
 from .policies.consolidation import ConsolidationPolicy
 from .policies.decay import DecayPolicy
 from .policies.salience import SalienceScorer
@@ -91,6 +91,47 @@ class TieredMemory:
                 self.backend.update_tier(event.id, MemoryTier.LONG_TERM)
                 promoted += 1
         return promoted
+
+    def deduplicate(self, threshold: float, dry_run: bool = False) -> ConsolidationReport:
+        """Merges near-duplicate long-term memories. `threshold` is
+        required, not defaulted: InMemoryBackend's TF-IDF cosine,
+        ChromaBackend's 1/(1+distance), HybridBackend's RRF-fused
+        scores, and GraphBackend's unbounded entity-overlap counts are
+        all on different scales, so no single default threshold is
+        meaningful across backends -- see docs/superpowers/specs/
+        2026-08-06-offline-consolidation.md.
+        """
+        pairs = _find_similar_pairs(self.backend, MemoryTier.LONG_TERM, threshold)
+        now = datetime.now(timezone.utc)
+
+        report = ConsolidationReport()
+        merged_event_ids: set[str] = set()
+
+        for a, b, _score in pairs:
+            if a.id in merged_event_ids or b.id in merged_event_ids:
+                continue  # already absorbed by an earlier pair in this pass
+
+            new_id = None
+            if not dry_run:
+                keep, discard = (a, b) if a.salience >= b.salience else (b, a)
+                merged_event = MemoryEvent(
+                    content=keep.content,
+                    timestamp=min(a.timestamp, b.timestamp),
+                    tier=MemoryTier.LONG_TERM,
+                    salience=max(a.salience, b.salience),
+                    metadata={**discard.metadata, **keep.metadata, "merged_from": [a.id, b.id]},
+                    last_reinforced=now,
+                )
+                self.backend.add(merged_event)
+                self.backend.remove(a.id)
+                self.backend.remove(b.id)
+                new_id = merged_event.id
+
+            report.merged.append((a.id, b.id, new_id))
+            merged_event_ids.add(a.id)
+            merged_event_ids.add(b.id)
+
+        return report
 
     def decay(self, now: Optional[datetime] = None) -> int:
         """Run a decay pass, removing events whose strength has fallen
