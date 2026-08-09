@@ -425,7 +425,7 @@ report = memory.offline_consolidate(
 
 ## Status
 
-Early alpha (v0.2). Core loop (`store` → `consolidate` → `decay` →
+Early alpha (v0.3). Core loop (`store` → `consolidate` → `decay` →
 `retrieve`) works end-to-end with all four backends. `GraphBackend`'s
 full method set (`add`/`get_all`/`query`/`update_tier`/`remove`/
 `related_to`/`explain_path`/`consolidation_signal`) is implemented and
