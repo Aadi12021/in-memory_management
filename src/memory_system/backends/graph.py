@@ -48,9 +48,17 @@ class Relationship:
     relation_type: str         # e.g. "ALLERGIC_TO", "ENJOYS", "INGREDIENT_OF"
     source_event_id: str       # which MemoryEvent this came from
     confidence: float = 1.0    # extraction confidence, see extraction problem
-    strength: float = 1.0      # consolidation-reinforced importance -- distinct from
+    strength: float = 0.5      # consolidation-reinforced importance -- distinct from
                                 # confidence, which is about extraction certainty, not
-                                # how reinforced this connection has become over time
+                                # how reinforced this connection has become over time.
+                                # Starts at a neutral midpoint (not the 1.0 ceiling
+                                # strengthen_connections() enforces) so real +0.1
+                                # reinforcement bumps have somewhere to go -- a
+                                # relationship that starts already at the cap can never
+                                # be observed to strengthen. See docs/superpowers/specs/
+                                # 2026-08-06-offline-consolidation.md's post-ship
+                                # correction for the exploratory-testing finding that
+                                # led to this default.
     metadata: dict = field(default_factory=dict)
 
 

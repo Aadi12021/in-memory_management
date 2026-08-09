@@ -217,6 +217,11 @@ class TieredMemory:
             if not dry_run:
                 try:
                     summary_text = summarizer.summarize(group_events)
+                    if not isinstance(summary_text, str):
+                        raise TypeError(
+                            f"MemorySummarizer.summarize() must return str, "
+                            f"got {type(summary_text).__name__}"
+                        )
                 except Exception:
                     # fail soft: a broken/unavailable LLM call shouldn't
                     # abort the whole pass, it should just mean this
